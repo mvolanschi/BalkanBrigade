@@ -16,7 +16,7 @@ class GreenPTClient:
     def __init__(self, api_key: str | None = None, api_url: str | None = None):
         self.api_key = api_key or os.getenv("GREENPT_API_KEY")
         self.api_url = api_url or os.getenv(
-            "GREENPT_API_URL", "https://api.greenpt.example/v1/chat/completions"
+            "GREENPT_API_URL", "https://api.greenpt.ai/v1/chat/completions"
         )
         self._client = httpx.AsyncClient(timeout=30.0)
 
@@ -30,10 +30,11 @@ class GreenPTClient:
             raise RuntimeError("GREENPT_API_KEY not configured")
 
         payload = {
-            "model": kwargs.get("model", "green-1-raw"),
+            "model": kwargs.get("model", "green-l"),
             "messages": messages,
             "temperature": kwargs.get("temperature", 0.7),
             "max_tokens": kwargs.get("max_tokens", 512),
+            "stream": kwargs.get("stream", False),
         }
 
         headers = {

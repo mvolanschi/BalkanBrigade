@@ -19,7 +19,8 @@ from pypdf import PdfReader
 import docx as docx_lib
 
 
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+base_path = Path(__file__).resolve()
+load_dotenv(base_path.parents[2] / ".env")
 
 app = FastAPI(title="Interview Practice Backend")
 
@@ -97,6 +98,67 @@ def extract_text_from_cv_file(filename: str, data: bytes) -> str:
             status_code=400,
             detail=f"Unsupported CV file type: {ext}. Please upload a PDF or DOCX.",
         )
+
+
+async def evaluate_cv(
+    cv_text: str,
+    job_description: str,
+    company_info: str,
+    *,
+    temperature: float = 0.2,
+    max_tokens: int = 600,
+) -> dict:
+    """Ask GreenPT to evaluate how well a CV fits a role and return the formatted reply."""
+
+    if not cv_text.strip():
+        raise HTTPException(status_code=400, detail="CV text is required for evaluation.")
+
+    system_prompt = (
+        "You are an expert technical recruiter. Score the candidate CV against the job "
+        "requirements from 0 to 100 and list concrete strengths, improvements, and a one-paragraph summary. "
+        "Respond exactly in this format: '\nSCORE: <number>' followed by sections 'STRENGTHS:', 'IMPROVEMENTS:' and 'SUMMARY:' with bullet points. "
+        "Use concise bullet points (max 3 per section) and be direct."
+    )
+
+    user_payload = (
+        "Candidate CV:\n"
+        f"{cv_text.strip()}\n\n"
+        "Job Description:\n"
+        f"{(job_description or '').strip() or '(not provided)'}\n\n"
+        "Company Info:\n"
+        f"{(company_info or '').strip() or '(not provided)'}"
+    )
+
+    client = get_client()
+    try:
+        resp = await client.chat(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_payload},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to evaluate CV: {exc}")
+
+    assistant_text = ""
+    if isinstance(resp, dict):
+        choices = resp.get("choices") or []
+        if choices:
+            first = choices[0]
+            if isinstance(first, dict) and "message" in first and isinstance(first["message"], dict):
+                assistant_text = first["message"].get("content", "")
+            else:
+                assistant_text = first.get("text", "")
+
+    if not assistant_text and isinstance(resp, dict):
+        assistant_text = resp.get("text", "") or resp.get("response", "")
+
+    if not assistant_text:
+        raise HTTPException(status_code=502, detail="GreenPT returned an empty evaluation.")
+
+    return {"reply": assistant_text.strip()}
 
 
 # ---------- endpoint to turn CV file into text (still available if needed) ----------
