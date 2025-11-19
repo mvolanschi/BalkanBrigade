@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Any
 import asyncio
 import os
 from pathlib import Path
@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from dotenv import load_dotenv
+import logging
 
 from .sessions import create_session, get_session, append_message, set_assets, set_system_prompt
 from .greenpt import get_client
@@ -21,6 +22,7 @@ import docx as docx_lib
 
 base_path = Path(__file__).resolve()
 load_dotenv(base_path.parents[2] / ".env")
+logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="Interview Practice Backend")
 
@@ -100,6 +102,57 @@ def extract_text_from_cv_file(filename: str, data: bytes) -> str:
         )
 
 
+def _extract_assistant_text(resp: Any) -> str:
+    """Robustly extract assistant text from common model response shapes.
+
+    Tries several common locations used by chat/completion APIs, including:
+    - resp['choices'][0]['message']['content']
+    - resp['choices'][0]['delta']['content']
+    - resp['choices'][0]['text']
+    - top-level 'text', 'response', or 'reply' fields
+    Returns empty string when no content was found.
+    """
+    if not resp:
+        return ""
+
+    # If dict-like response (common)
+    if isinstance(resp, dict):
+        choices = resp.get("choices") or []
+        if choices and isinstance(choices, list):
+            first = choices[0]
+            if isinstance(first, dict):
+                # new-style chat: message.content
+                msg = first.get("message")
+                if isinstance(msg, dict):
+                    content = msg.get("content")
+                    if content:
+                        return content
+
+                # streaming delta: delta.content
+                delta = first.get("delta")
+                if isinstance(delta, dict):
+                    content = delta.get("content")
+                    if content:
+                        return content
+
+                # older completions: text
+                text = first.get("text")
+                if text:
+                    return text
+
+        # fallback top-level
+        for key in ("text", "response", "reply"):
+            v = resp.get(key)
+            if v:
+                return v
+
+    # If it's already a string, return as-is
+    if isinstance(resp, str):
+        return resp
+
+    return ""
+
+
 async def evaluate_cv(
     cv_text: str,
     job_description: str,
@@ -142,20 +195,9 @@ async def evaluate_cv(
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Failed to evaluate CV: {exc}")
 
-    assistant_text = ""
-    if isinstance(resp, dict):
-        choices = resp.get("choices") or []
-        if choices:
-            first = choices[0]
-            if isinstance(first, dict) and "message" in first and isinstance(first["message"], dict):
-                assistant_text = first["message"].get("content", "")
-            else:
-                assistant_text = first.get("text", "")
-
-    if not assistant_text and isinstance(resp, dict):
-        assistant_text = resp.get("text", "") or resp.get("response", "")
-
+    assistant_text = _extract_assistant_text(resp)
     if not assistant_text:
+        logging.warning("Empty assistant text for CV evaluation; raw response: %s", resp)
         raise HTTPException(status_code=502, detail="GreenPT returned an empty evaluation.")
 
     return {"reply": assistant_text.strip()}
@@ -262,27 +304,30 @@ async def start_session(session_id: str):
     if q >= max_q:
         raise HTTPException(status_code=400, detail="Question limit reached")
 
-    messages = [m.dict() for m in session.messages]
+    # Build a focused message set for the session start call: use the session's
+    # system prompt but explicitly instruct the model to ask exactly one
+    # interview question. This avoids the model returning an overall
+    # evaluation/summary at session start.
+    start_instruction = (
+        "Please ask exactly one interview question tailored to the candidate. "
+        "Do NOT provide any evaluation, summary, or feedback — ask only the question. "
+        "Keep it concise and clear."
+    )
+
+    messages = [
+        {"role": "system", "content": session.system_prompt},
+        {"role": "user", "content": start_instruction},
+    ]
+
     client = get_client()
     try:
         resp = await client.chat(messages)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    assistant_text = ""
-    if isinstance(resp, dict):
-        choices = resp.get("choices") or []
-        if choices:
-            first = choices[0]
-            if isinstance(first, dict) and "message" in first and isinstance(first["message"], dict):
-                assistant_text = first["message"].get("content", "")
-            else:
-                assistant_text = first.get("text", "")
-
-    if not assistant_text and isinstance(resp, dict):
-        assistant_text = resp.get("text", "") or resp.get("response", "")
-
+    assistant_text = _extract_assistant_text(resp)
     if not assistant_text:
+        logging.warning("No assistant text found for session start; raw response: %s", resp)
         assistant_text = "(no text returned from model)"
 
     # append assistant reply and increment counter
@@ -312,6 +357,7 @@ async def apply_session_settings(session_id: str, req: SettingsReq):
 
 @app.post("/session/{session_id}/message")
 async def post_message(session_id: str, req: MessageReq):
+
     session = get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="session not found")
@@ -335,20 +381,9 @@ async def post_message(session_id: str, req: MessageReq):
         raise HTTPException(status_code=500, detail=str(e))
 
     # try to extract assistant content (compatible with common chat APIs)
-    assistant_text = ""
-    if isinstance(resp, dict):
-        choices = resp.get("choices") or []
-        if choices:
-            first = choices[0]
-            if isinstance(first, dict) and "message" in first and isinstance(first["message"], dict):
-                assistant_text = first["message"].get("content", "")
-            else:
-                assistant_text = first.get("text", "")
-
-    if not assistant_text and isinstance(resp, dict):
-        assistant_text = resp.get("text", "") or resp.get("response", "")
-
+    assistant_text = _extract_assistant_text(resp)
     if not assistant_text:
+        logging.warning("No assistant text found for message reply; raw response: %s", resp)
         assistant_text = "(no text returned from model)"
 
     # append assistant reply to session and increment question counter
