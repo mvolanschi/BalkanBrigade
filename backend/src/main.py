@@ -19,7 +19,6 @@ from .prompt_store import get_prompt, DEFAULT_PROMPT
 from pypdf import PdfReader
 import docx as docx_lib
 
-
 base_path = Path(__file__).resolve()
 load_dotenv(base_path.parents[2] / ".env")
 logging.basicConfig(level=logging.INFO)
@@ -335,42 +334,80 @@ async def apply_session_settings(session_id: str, req: SettingsReq):
 
 
 @app.post("/session/{session_id}/message")
-async def post_message(session_id: str, req: MessageReq):
-
+async def post_message(
+    session_id: str, 
+    audio: UploadFile = File(...),
+    question_index: Optional[int] = Form(None)
+):
     session = get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="session not found")
-
+    
+    print(f"=== POST MESSAGE ENDPOINT CALLED ===")
+    print(f"session_id: {session_id}")
+    print(f"question_index: {question_index}")
+    print(f"audio received: {audio is not None}")
+    
+    transcribed_text = ""
+    try:
+        # Read the audio file content
+        audio_content = await audio.read()
+        
+        # Import and call your speech-to-text function
+        from interview_helper.speech_to_text import speech_to_text
+        
+        # Call the function (adjust parameters based on your actual function signature)
+        transcribed_text = speech_to_text(audio_content)
+        print(f"transcribed text = {transcribed_text}")
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Speech-to-text failed: {str(e)}")
+    
     # append user message
-    append_message(session_id, role="user", content=req.content)
+    append_message(session_id, role="user", content=transcribed_text)
+    
 
     # enforce question limit before generating a new assistant reply
     q = session.metadata.get("questions_asked", 0)
     max_q = session.metadata.get("max_questions", 10)
     if q >= max_q:
         raise HTTPException(status_code=400, detail="Question limit reached")
-
+    
     # prepare messages for GreenPT: include system and history
     messages = [m.dict() for m in session.messages]
-
     client = get_client()
+    
     try:
         resp = await client.chat(messages)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
+    
     # try to extract assistant content (compatible with common chat APIs)
-    assistant_text = _extract_assistant_text(resp)
+    assistant_text = ""
+    if isinstance(resp, dict):
+        choices = resp.get("choices") or []
+        if choices:
+            first = choices[0]
+            if isinstance(first, dict) and "message" in first and isinstance(first["message"], dict):
+                assistant_text = first["message"].get("content", "")
+            else:
+                assistant_text = first.get("text", "")
+    if not assistant_text and isinstance(resp, dict):
+        assistant_text = resp.get("text", "") or resp.get("response", "")
     if not assistant_text:
         logging.warning("No assistant text found for message reply; raw response: %s", resp)
         assistant_text = "(no text returned from model)"
-
+    
     # append assistant reply to session and increment question counter
     append_message(session_id, role="assistant", content=assistant_text)
     session.metadata["questions_asked"] = q + 1
-
-    return {"reply": assistant_text, "raw": resp}
-
+    
+    return {
+        "reply": assistant_text, 
+        "raw": resp,
+        "question_index": question_index,
+        "transcribed_text": transcribed_text
+    }
 
 if __name__ == "__main__":
     import uvicorn

@@ -199,16 +199,21 @@ export default function InterviewPage() {
   };
 
   const uploadAnswer = async (audioBlob: Blob | null) => {
+
+    console.log("In upload answer")
+    
     const sessionId =
       typeof window !== "undefined"
         ? localStorage.getItem("greenpt_session_id")
         : null;
-
+    
     // If no session, just locally advance questions (still practice)
     if (!sessionId) {
       setQuestionIndex((prev) => prev + 1);
       return;
     }
+    
+    console.log("We have session id in upload answer")
 
     try {
       setIsUploadingAnswer(true);
@@ -221,7 +226,7 @@ export default function InterviewPage() {
       }
 
       const res = await fetch(
-        `${API_BASE}/session/${sessionId}/interview/answer`,
+        `${API_BASE}/session/${sessionId}/message`,
         {
           method: "POST",
           body: formData,
