@@ -2,8 +2,11 @@
 
 import ColorBends from "../../components/ColorBends";
 import { useState, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { FileText, FileSearch, Building2, Loader2 } from "lucide-react";
+
+const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
 
 export default function UploadPage() {
   const [cvFile, setCvFile] = useState<File | null>(null);
@@ -12,6 +15,7 @@ export default function UploadPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cvInputRef = useRef<HTMLInputElement | null>(null);
+  const router = useRouter();
 
   const handleSubmit = async () => {
     setError(null);
@@ -28,22 +32,72 @@ export default function UploadPage() {
     try {
       setIsLoading(true);
 
-      const formData = new FormData();
-      formData.append("cv", cvFile);
-      formData.append("job_description", jobDescription);
-      formData.append("company_info", companyDetails);
+      // 1) Send CV file to backend to extract text
+      const cvFormData = new FormData();
+      cvFormData.append("cv", cvFile);
 
-      const res = await fetch("/api/analyze", {
+      const cvRes = await fetch(`${API_BASE}/cv-text`, {
         method: "POST",
-        body: formData,
+        body: cvFormData,
       });
 
-      const data = await res.json();
-      console.log("Analysis result:", data);
-      // later: router.push("/results")
+      if (!cvRes.ok) {
+        const detail = await cvRes
+          .json()
+          .catch(() => ({ detail: "Failed to extract CV text" }));
+        throw new Error(
+          typeof detail.detail === "string"
+            ? detail.detail
+            : "Failed to extract CV text."
+        );
+      }
+
+      const cvData: { text: string } = await cvRes.json();
+      const cvText = cvData.text;
+
+      // 2) Create a session with CV text + job description + company info
+      const sessionPayload = {
+        cv: cvText,
+        job_description: jobDescription,
+        company_info: companyDetails,
+      };
+
+      const sessionRes = await fetch(`${API_BASE}/session`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(sessionPayload),
+      });
+
+      if (!sessionRes.ok) {
+        const detail = await sessionRes
+          .json()
+          .catch(() => ({ detail: "Failed to create session" }));
+        throw new Error(
+          typeof detail.detail === "string"
+            ? detail.detail
+            : "Failed to create session."
+        );
+      }
+
+      const sessionData: { id: string; system_prompt: string } =
+        await sessionRes.json();
+      const sessionId = sessionData.id;
+
+      console.log("Session created:", sessionId);
+      console.log("System prompt:", sessionData.system_prompt);
+
+      // 3) Store sessionId for later steps
+      if (typeof window !== "undefined") {
+        localStorage.setItem("greenpt_session_id", sessionId);
+      }
+
+      // 4) Go to summary page
+      router.push("/summary");
     } catch (err: any) {
       console.error(err);
-      setError("Something went wrong while sending data.");
+      setError(err.message ?? "Something went wrong while sending data.");
     } finally {
       setIsLoading(false);
     }
@@ -99,7 +153,7 @@ export default function UploadPage() {
               </p>
 
               <input
-                ref={cvInputRef} // 👈 attach ref
+                ref={cvInputRef}
                 type="file"
                 accept=".pdf,.doc,.docx"
                 onChange={(e) => setCvFile(e.target.files?.[0] || null)}
@@ -117,7 +171,7 @@ export default function UploadPage() {
                     onClick={() => {
                       setCvFile(null);
                       if (cvInputRef.current) {
-                        cvInputRef.current.value = ""; // 👈 clear the native input
+                        cvInputRef.current.value = "";
                       }
                     }}
                     className="ml-4 text-red-300 hover:text-red-400 text-xl font-bold transition pointer-events-auto"
@@ -146,7 +200,7 @@ export default function UploadPage() {
                 value={jobDescription}
                 onChange={(e) => setJobDescription(e.target.value)}
                 rows={9}
-                className="w-full text-base rounded-xl bg-black/70 border border-white/20 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-green-400/70"
+                className="w-full text-base rounded-xl bg-black/80 border border-white/20 px-4 py-3 text-white focus:outline-none focus:border-green-400/60"
                 placeholder="Paste the job description here..."
               />
             </div>
@@ -169,7 +223,7 @@ export default function UploadPage() {
                 value={companyDetails}
                 onChange={(e) => setCompanyDetails(e.target.value)}
                 rows={9}
-                className="w-full text-base rounded-xl bg-black/70 border border-white/20 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-green-400/70"
+                className="w-full text-base rounded-xl bg-black/80 border border-white/20 px-4 py-3 text-white focus:outline-none focus:border-green-400/60"
                 placeholder="Paste company website or details..."
               />
             </div>
