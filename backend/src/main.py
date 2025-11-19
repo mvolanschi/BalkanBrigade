@@ -27,7 +27,7 @@ app = FastAPI(title="Interview Practice Backend")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("CORS_ORIGIN", "http://localhost:3000/")],
+    allow_origins=[os.getenv("CORS_ORIGIN", "http://localhost:3000")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -336,9 +336,11 @@ async def apply_session_settings(session_id: str, req: SettingsReq):
 @app.post("/session/{session_id}/message")
 async def post_message(
     session_id: str, 
-    audio: UploadFile = File(...),
+    audio: Optional[UploadFile] = File(...),
     question_index: Optional[int] = Form(None)
 ):
+    
+    print("in post message method")
     session = get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="session not found")
@@ -348,6 +350,9 @@ async def post_message(
     print(f"question_index: {question_index}")
     print(f"audio received: {audio is not None}")
     
+    if audio is None:
+        raise HTTPException(status_code=400, detail="No audio file provided")
+
     transcribed_text = ""
     try:
         # Read the audio file content

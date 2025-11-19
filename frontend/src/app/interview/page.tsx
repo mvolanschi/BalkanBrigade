@@ -206,7 +206,7 @@ export default function InterviewPage() {
       typeof window !== "undefined"
         ? localStorage.getItem("greenpt_session_id")
         : null;
-    
+
     // If no session, just locally advance questions (still practice)
     if (!sessionId) {
       setQuestionIndex((prev) => prev + 1);
@@ -224,6 +224,8 @@ export default function InterviewPage() {
       if (audioBlob) {
         formData.append("audio", audioBlob, `answer-${questionIndex}.webm`);
       }
+
+      console.log(`audio blob =  ${audioBlob}`)
 
       const res = await fetch(
         `${API_BASE}/session/${sessionId}/message`,
