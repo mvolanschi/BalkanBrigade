@@ -1,6 +1,7 @@
 from typing import Optional
 import asyncio
 import os
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,15 +21,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-def default_system_prompt(role: Optional[str] = None) -> str:
-    role = role or "software engineering interviewer"
-    return (
-        f"You are a helpful {role} for job interview practice. "
+PROMPT_PATH = Path(__file__).with_name("system_prompt.txt")
+try:
+    DEFAULT_PROMPT_TEMPLATE = PROMPT_PATH.read_text(encoding="utf-8").strip()
+except OSError:
+    DEFAULT_PROMPT_TEMPLATE = (
+        "You are a helpful {role} for job interview practice. "
         "Ask clear interview questions, follow up when answers are incomplete, "
         "and at the end provide concise feedback: strengths, areas to improve, and a sample improved answer. "
         "Keep responses actionable and friendly."
     )
+
+
+def default_system_prompt(role: Optional[str] = None) -> str:
+    role = role or "software engineering interviewer"
+    try:
+        return DEFAULT_PROMPT_TEMPLATE.format(role=role)
+    except KeyError:
+        return DEFAULT_PROMPT_TEMPLATE
 
 
 class CreateSessionReq(BaseModel):
