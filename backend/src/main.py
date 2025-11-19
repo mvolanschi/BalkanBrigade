@@ -34,26 +34,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-PROMPT_PATH = Path(__file__).with_name("system_prompt.txt")
-try:
-    DEFAULT_PROMPT_TEMPLATE = PROMPT_PATH.read_text(encoding="utf-8").strip()
-except OSError:
-    DEFAULT_PROMPT_TEMPLATE = (
-        "You are a helpful {role} for job interview practice. "
-        "Ask clear interview questions, follow up when answers are incomplete, "
-        "and at the end provide concise feedback: strengths, areas to improve, and a sample improved answer. "
-        "Keep responses actionable and friendly."
-    )
-
-
-def default_system_prompt(role: Optional[str] = None) -> str:
-    role = role or "software engineering interviewer"
-    try:
-        return DEFAULT_PROMPT_TEMPLATE.format(role=role)
-    except KeyError:
-        return DEFAULT_PROMPT_TEMPLATE
-
-
 class MessageReq(BaseModel):
     content: str
 
@@ -231,7 +211,6 @@ async def create_session_from_upload(
     job_description: str = Form(...),
     company_info: str = Form(""),
     max_questions: int = Form(10),
-    role: Optional[str] = Form(None),
 ):
     """
     Accept a CV file plus job & company text in a single request, then:
@@ -253,7 +232,7 @@ async def create_session_from_upload(
         raise HTTPException(status_code=500, detail=f"Failed to extract CV text: {e}")
 
     # 2) Build base system prompt
-    base = default_system_prompt(role=role)
+    base = get_prompt()
 
     # 3) Create a new session
     session = create_session(system_prompt=base, metadata={})

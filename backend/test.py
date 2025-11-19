@@ -14,7 +14,9 @@ from textwrap import dedent
 
 from fastapi import HTTPException
 
-from backend.src.main import evaluate_cv, default_system_prompt
+from backend.src import prompt_store
+from backend.src.main import evaluate_cv
+from backend.src.prompt_store import get_prompt
 from backend.src.sessions import create_session, set_assets, append_message
 from backend.src.greenpt import get_client
 
@@ -116,7 +118,7 @@ def prompt_continue() -> bool:
 async def run_interactive_interview(sample: dict[str, str]) -> None:
     """Spin up an interview session in the terminal using the current system prompt."""
 
-    base_prompt = default_system_prompt()
+    base_prompt = prompt_store.DEFAULT_PROMPT
     session = create_session(system_prompt=base_prompt)
     session = set_assets(
         session.id,
