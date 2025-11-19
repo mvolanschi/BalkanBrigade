@@ -40,15 +40,8 @@ class CreateSessionReq(BaseModel):
     job_description: Optional[str] = None
     company_info: Optional[str] = None
 
-
 class MessageReq(BaseModel):
     content: str
-
-
-class AssetsReq(BaseModel):
-    cv: Optional[str] = None
-    job_description: Optional[str] = None
-    company_info: Optional[str] = None
 
 
 @app.post("/session")
@@ -62,26 +55,8 @@ async def create_session_endpoint(req: CreateSessionReq):
     return {"id": session.id, "system_prompt": session.system_prompt}
 
 
-@app.post("/session/{session_id}/assets")
-async def set_session_assets(session_id: str, req: AssetsReq):
-    session = get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="session not found")
-    # delegate assembly, base detection and storage to sessions.set_assets
-    updated = set_assets(session_id, cv=req.cv, job_description=req.job_description, company_info=req.company_info)
-    return {"id": updated.id, "system_prompt": updated.system_prompt}
-
-
-@app.get("/session/{session_id}/assets")
-async def get_session_assets(session_id: str):
-    session = get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="session not found")
-    return {
-        "cv": session.cv,
-        "job_description": session.job_description,
-        "company_info": session.company_info,
-    }
+# Assets are accepted only at session creation. There is no separate
+# POST /session/{session_id}/assets endpoint to avoid redundancy.
 
 
 @app.get("/session/{session_id}")
