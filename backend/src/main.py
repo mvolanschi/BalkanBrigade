@@ -2,9 +2,9 @@ from typing import Optional
 import asyncio
 import os
 from pathlib import Path
-import io  # NEW
+import io
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form  # UPDATED (added Form)
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -96,6 +96,27 @@ def extract_text_from_cv_file(filename: str, data: bytes) -> str:
             detail=f"Unsupported CV file type: {ext}. Please upload a PDF or DOCX.",
         )
 
+
+# ---------- endpoint to turn CV file into text (still available if needed) ----------
+
+@app.post("/cv-text")
+async def extract_cv_text(cv: UploadFile = File(...)):
+    """Accept a CV file and return extracted plain text.
+
+    Frontend will send FormData with field name 'cv'.
+    """
+    try:
+        data = await cv.read()
+        text = extract_text_from_cv_file(cv.filename, data)
+    except HTTPException:
+        # propagate our HTTPExceptions (unsupported type, etc.)
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to extract CV text: {e}")
+
+    return {"text": text}
+
+
 # ---------- NEW: combined endpoint: file + texts -> session ----------
 
 @app.post("/session-from-upload")
@@ -111,7 +132,8 @@ async def create_session_from_upload(
     - Extract CV text
     - Create a session
     - Attach CV, job description and company info as assets
-    - Return { id, system_prompt }
+    - Evaluate CV
+    - Return { id, cv_eval }
     """
     # 1) Extract text from the uploaded CV
     try:
@@ -138,8 +160,15 @@ async def create_session_from_upload(
         base_prompt=base,
     )
 
+    # 5) Evaluate CV with GreenPT
+    cv_eval = await evaluate_cv(
+        cv_text=cv_text,
+        job_description=job_description,
+        company_info=company_info,
+    )
+
     # 5) Return session info
-    return {"id": session.id, "system_prompt": session.system_prompt}
+    return {"id": session.id, "cv_eval": cv_eval}
 
 @app.get("/session/{session_id}")
 async def get_session_endpoint(session_id: str):
