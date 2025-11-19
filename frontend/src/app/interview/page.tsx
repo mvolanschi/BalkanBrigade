@@ -19,9 +19,9 @@ type StartSessionResponse = {
 
 // Fallback questions if backend / session is not available
 const MOCK_QUESTIONS: string[] = [
-  "Tell me about yourself and why you’re interested in this role.",
+  "Tell me about yourself and why you're interested in this role.",
   "Describe a time you faced a major challenge at work. How did you handle it?",
-  "What’s one sustainability initiative you’re proud of contributing to?",
+  "What's one sustainability initiative you're proud of contributing to?",
 ];
 
 export default function InterviewPage() {
@@ -33,6 +33,7 @@ export default function InterviewPage() {
   const [isRecording, setIsRecording] = useState(false);
   const [isLoadingQuestion, setIsLoadingQuestion] = useState(true);
   const [isUploadingAnswer, setIsUploadingAnswer] = useState(false);
+  const [isProcessingUpload, setIsProcessingUpload] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isFinished, setIsFinished] = useState(false);
 
@@ -56,6 +57,8 @@ export default function InterviewPage() {
         });
 
         recorder.addEventListener("stop", () => {
+          if (isProcessingUpload) return;
+
           const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
           audioChunksRef.current = [];
           uploadAnswer(blob);
@@ -67,7 +70,7 @@ export default function InterviewPage() {
           "Could not access your microphone. Please allow mic permissions and refresh."
         );
       });
-  }, []);
+  }, [isProcessingUpload]);
 
   // Fetch question when page loads and whenever questionIndex changes
   useEffect(() => {
@@ -166,7 +169,7 @@ export default function InterviewPage() {
 
   const autoAdvance = () => {
     if (isRecording && mediaRecorderRef.current) {
-      // this will trigger uploadAnswer in recorder.onstop
+      setIsProcessingUpload(true);
       setIsRecording(false);
       mediaRecorderRef.current.stop();
     } else {
@@ -199,9 +202,8 @@ export default function InterviewPage() {
   };
 
   const uploadAnswer = async (audioBlob: Blob | null) => {
+    console.log("In upload answer");
 
-    console.log("In upload answer")
-    
     const sessionId =
       typeof window !== "undefined"
         ? localStorage.getItem("greenpt_session_id")
@@ -210,10 +212,11 @@ export default function InterviewPage() {
     // If no session, just locally advance questions (still practice)
     if (!sessionId) {
       setQuestionIndex((prev) => prev + 1);
+      setIsProcessingUpload(false);
       return;
     }
-    
-    console.log("We have session id in upload answer")
+
+    console.log("We have session id in upload answer");
 
     try {
       setIsUploadingAnswer(true);
@@ -225,15 +228,12 @@ export default function InterviewPage() {
         formData.append("audio", audioBlob, `answer-${questionIndex}.webm`);
       }
 
-      console.log(`audio blob =  ${audioBlob}`)
+      console.log(`audio blob =  ${audioBlob}`);
 
-      const res = await fetch(
-        `${API_BASE}/session/${sessionId}/message`,
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
+      const res = await fetch(`${API_BASE}/session/${sessionId}/message`, {
+        method: "POST",
+        body: formData,
+      });
 
       if (!res.ok) {
         const detail = await res
@@ -252,6 +252,7 @@ export default function InterviewPage() {
       setError(err?.message ?? "Failed to upload answer.");
     } finally {
       setIsUploadingAnswer(false);
+      setIsProcessingUpload(false);
     }
   };
 
