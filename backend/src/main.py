@@ -13,7 +13,7 @@ import logging
 
 from .sessions import create_session, get_session, append_message, set_assets, set_system_prompt
 from .greenpt import get_client
-from .prompt_store import get_prompt
+from .prompt_store import get_prompt, DEFAULT_PROMPT
 
 # NEW: imports for CV text extraction
 from pypdf import PdfReader
@@ -231,8 +231,8 @@ async def create_session_from_upload(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to extract CV text: {e}")
 
-    # 2) Build base system prompt
-    base = get_prompt()
+    # 2) Build base system prompt (use default prompt if frontend didn't set presets)
+    base = DEFAULT_PROMPT
 
     # 3) Create a new session
     session = create_session(system_prompt=base, metadata={})
