@@ -30,7 +30,7 @@ class GreenPTClient:
             raise RuntimeError("GREENPT_API_KEY not configured")
 
         payload = {
-            "model": kwargs.get("model", "green-l"),
+            "model": kwargs.get("model", "green-l-raw"),
             "messages": messages,
             "temperature": kwargs.get("temperature", 0.7),
             "max_tokens": kwargs.get("max_tokens", 512),
@@ -43,7 +43,13 @@ class GreenPTClient:
         }
 
         resp = await self._client.post(self.api_url, json=payload, headers=headers)
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:  # pragma: no cover - diagnostic detail for the caller
+            detail = exc.response.text
+            raise httpx.HTTPStatusError(
+                f"{exc} | Response body: {detail}", request=exc.request, response=exc.response
+            )
         return resp.json()
 
     async def close(self) -> None:
