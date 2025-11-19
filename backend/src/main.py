@@ -2,9 +2,9 @@ from typing import Optional
 import asyncio
 import os
 from pathlib import Path
-import io  # NEW
+import io
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form  # UPDATED (added Form)
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -59,7 +59,6 @@ class CreateSessionReq(BaseModel):
 class MessageReq(BaseModel):
     content: str
 
-
 # ---------- helpers for CV text extraction ----------
 
 def _get_ext(filename: str) -> str:
@@ -99,6 +98,67 @@ def extract_text_from_cv_file(filename: str, data: bytes) -> str:
         )
 
 
+async def evaluate_cv(
+    cv_text: str,
+    job_description: str,
+    company_info: str,
+    *,
+    temperature: float = 0.2,
+    max_tokens: int = 600,
+) -> dict:
+    """Ask GreenPT to evaluate a CV against a job description and company context."""
+
+    if not cv_text.strip():
+        raise HTTPException(status_code=400, detail="CV text is required for evaluation.")
+
+    system_prompt = (
+        "You are an expert technical recruiter. Score the candidate CV against the job "
+        "requirements from 0 to 100 and list concrete strengths, improvements, and a one-paragraph summary. "
+        "Respond exactly in this format: '\nSCORE: <number>' followed by sections 'STRENGTHS:', 'IMPROVEMENTS:' and 'SUMMARY:' with bullet points. "
+        "Use concise bullet points (max 3 per section) and be direct."
+    )
+
+    user_payload = (
+        "Candidate CV:\n"
+        f"{cv_text.strip()}\n\n"
+        "Job Description:\n"
+        f"{(job_description or '').strip() or '(not provided)'}\n\n"
+        "Company Info:\n"
+        f"{(company_info or '').strip() or '(not provided)'}"
+    )
+
+    client = get_client()
+    try:
+        resp = await client.chat(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_payload},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to evaluate CV: {exc}")
+
+    assistant_text = ""
+    if isinstance(resp, dict):
+        choices = resp.get("choices") or []
+        if choices:
+            first = choices[0]
+            if isinstance(first, dict) and "message" in first and isinstance(first["message"], dict):
+                assistant_text = first["message"].get("content", "")
+            else:
+                assistant_text = first.get("text", "")
+
+    if not assistant_text and isinstance(resp, dict):
+        assistant_text = resp.get("text", "") or resp.get("response", "")
+
+    if not assistant_text:
+        raise HTTPException(status_code=502, detail="GreenPT returned an empty evaluation.")
+
+    return {"reply": assistant_text.strip()}
+
+
 # ---------- endpoint to turn CV file into text (still available if needed) ----------
 
 @app.post("/cv-text")
@@ -134,7 +194,8 @@ async def create_session_from_upload(
     - Extract CV text
     - Create a session
     - Attach CV, job description and company info as assets
-    - Return { id, system_prompt }
+    - Evaluate CV
+    - Return { id, cv_eval }
     """
     # 1) Extract text from the uploaded CV
     try:
@@ -161,8 +222,15 @@ async def create_session_from_upload(
         base_prompt=base,
     )
 
+    # 5) Evaluate CV with GreenPT
+    cv_eval = await evaluate_cv(
+        cv_text=cv_text,
+        job_description=job_description,
+        company_info=company_info,
+    )
+
     # 5) Return session info
-    return {"id": session.id, "system_prompt": session.system_prompt}
+    return {"id": session.id, "cv_eval": cv_eval}
 
 
 # ---------- EXISTING SESSION ENDPOINTS (unchanged) ----------
