@@ -168,11 +168,21 @@ export default function InterviewPage() {
   };
 
   const autoAdvance = () => {
-    if (isRecording && mediaRecorderRef.current) {
+    const recorder = mediaRecorderRef.current;
+
+    if (!recorder) {
+      console.warn("No recorder available");
+      uploadAnswer(null);
+      return;
+    }
+    if (recorder.state === "recording") {
+      console.log("Auto-stopping recording due to timer");
       setIsProcessingUpload(true);
       setIsRecording(false);
-      mediaRecorderRef.current.stop();
-    } else {
+      recorder.stop();
+      // The 'stop' event listener will handle uploadAnswer with the blob
+    } else if (recorder.state === "inactive") {
+      console.log("Recorder inactive, moving to next question");
       uploadAnswer(null);
     }
   };
