@@ -311,6 +311,7 @@ export default function InterviewPage() {
         setResponseAIinterview(reply.reply)
 
         console.log(`reply audio data: ${reply.audio_data}`)
+        setQuestion(reply.reply)
 
         setAudioBlobResponse(reply.audio_data)
         console.log(`Reply: ${reply.reply}`)
