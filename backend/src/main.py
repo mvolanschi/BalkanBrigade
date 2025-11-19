@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import io  # NEW
 
-from fastapi import FastAPI, HTTPException, UploadFile, File  # UPDATED
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form  # UPDATED (added Form)
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -60,7 +60,7 @@ class MessageReq(BaseModel):
     content: str
 
 
-# ---------- NEW: helpers for CV text extraction ----------
+# ---------- helpers for CV text extraction ----------
 
 def _get_ext(filename: str) -> str:
     return os.path.splitext(filename.lower())[1]
@@ -99,7 +99,7 @@ def extract_text_from_cv_file(filename: str, data: bytes) -> str:
         )
 
 
-# ---------- NEW: endpoint to turn CV file into text ----------
+# ---------- endpoint to turn CV file into text (still available if needed) ----------
 
 @app.post("/cv-text")
 async def extract_cv_text(cv: UploadFile = File(...)):
@@ -117,6 +117,52 @@ async def extract_cv_text(cv: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Failed to extract CV text: {e}")
 
     return {"text": text}
+
+
+# ---------- NEW: combined endpoint: file + texts -> session ----------
+
+@app.post("/session-from-upload")
+async def create_session_from_upload(
+    cv: UploadFile = File(...),
+    job_description: str = Form(...),
+    company_info: str = Form(""),
+    role: Optional[str] = Form(None),
+):
+    """
+    Accept a CV file plus job & company text in a single request, then:
+
+    - Extract CV text
+    - Create a session
+    - Attach CV, job description and company info as assets
+    - Return { id, system_prompt }
+    """
+    # 1) Extract text from the uploaded CV
+    try:
+        data = await cv.read()
+        cv_text = extract_text_from_cv_file(cv.filename, data)
+    except HTTPException:
+        # Propagate known HTTP errors as-is (e.g. unsupported file types)
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to extract CV text: {e}")
+
+    # 2) Build base system prompt
+    base = default_system_prompt(role=role)
+
+    # 3) Create a new session
+    session = create_session(system_prompt=base, metadata={})
+
+    # 4) Attach assets (CV text + job description + company info)
+    set_assets(
+        session.id,
+        cv=cv_text,
+        job_description=job_description,
+        company_info=company_info,
+        base_prompt=base,
+    )
+
+    # 5) Return session info
+    return {"id": session.id, "system_prompt": session.system_prompt}
 
 
 # ---------- EXISTING SESSION ENDPOINTS (unchanged) ----------
@@ -144,10 +190,10 @@ async def create_session_endpoint(req: CreateSessionReq):
 
 @app.get("/session/{session_id}")
 async def get_session_endpoint(session_id: str):
-  session = get_session(session_id)
-  if not session:
-      raise HTTPException(status_code=404, detail="session not found")
-  return session.dict()
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="session not found")
+    return session.dict()
 
 
 @app.post("/session/{session_id}/message")

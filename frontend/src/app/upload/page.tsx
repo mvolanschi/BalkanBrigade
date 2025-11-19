@@ -32,42 +32,17 @@ export default function UploadPage() {
     try {
       setIsLoading(true);
 
-      // 1) Send CV file to backend to extract text
-      const cvFormData = new FormData();
-      cvFormData.append("cv", cvFile);
+      // 🔥 Single call: send CV file + job + company to /session-from-upload
+      const formData = new FormData();
+      formData.append("cv", cvFile); // must match backend param name
+      formData.append("job_description", jobDescription);
+      formData.append("company_info", companyDetails);
+      // If you ever want to pass role:
+      // formData.append("role", "software engineer candidate");
 
-      const cvRes = await fetch(`${API_BASE}/cv-text`, {
+      const sessionRes = await fetch(`${API_BASE}/session-from-upload`, {
         method: "POST",
-        body: cvFormData,
-      });
-
-      if (!cvRes.ok) {
-        const detail = await cvRes
-          .json()
-          .catch(() => ({ detail: "Failed to extract CV text" }));
-        throw new Error(
-          typeof detail.detail === "string"
-            ? detail.detail
-            : "Failed to extract CV text."
-        );
-      }
-
-      const cvData: { text: string } = await cvRes.json();
-      const cvText = cvData.text;
-
-      // 2) Create a session with CV text + job description + company info
-      const sessionPayload = {
-        cv: cvText,
-        job_description: jobDescription,
-        company_info: companyDetails,
-      };
-
-      const sessionRes = await fetch(`${API_BASE}/session`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(sessionPayload),
+        body: formData,
       });
 
       if (!sessionRes.ok) {
@@ -88,12 +63,11 @@ export default function UploadPage() {
       console.log("Session created:", sessionId);
       console.log("System prompt:", sessionData.system_prompt);
 
-      // 3) Store sessionId for later steps
+      // Store sessionId for summary page
       if (typeof window !== "undefined") {
         localStorage.setItem("greenpt_session_id", sessionId);
       }
 
-      // 4) Go to summary page
       router.push("/summary");
     } catch (err: any) {
       console.error(err);
