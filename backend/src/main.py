@@ -47,8 +47,6 @@ def default_system_prompt(role: Optional[str] = None) -> str:
         return DEFAULT_PROMPT_TEMPLATE
 
 
-
-
 class MessageReq(BaseModel):
     content: str
 
@@ -124,6 +122,7 @@ async def create_session_from_upload(
     cv: UploadFile = File(...),
     job_description: str = Form(...),
     company_info: str = Form(""),
+    max_questions: int = Form(10),
     role: Optional[str] = Form(None),
 ):
     """
@@ -151,6 +150,10 @@ async def create_session_from_upload(
     # 3) Create a new session
     session = create_session(system_prompt=base, metadata={})
 
+    # initialize question counters and limits
+    session.metadata.setdefault("questions_asked", 0)
+    session.metadata.setdefault("max_questions", int(max_questions or 10))
+
     # 4) Attach assets (CV text + job description + company info)
     set_assets(
         session.id,
@@ -176,6 +179,51 @@ async def get_session_endpoint(session_id: str):
     if not session:
         raise HTTPException(status_code=404, detail="session not found")
     return session.dict()
+
+@app.post("/session/{session_id}/start")
+async def start_session(session_id: str):
+    """Trigger the model to produce the first assistant question for a session.
+
+    This calls the model with the current system prompt (and any messages),
+    appends the assistant reply to the session, and increments the question counter.
+    """
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="session not found")
+
+    q = session.metadata.get("questions_asked", 0)
+    max_q = session.metadata.get("max_questions", 10)
+    if q >= max_q:
+        raise HTTPException(status_code=400, detail="Question limit reached")
+
+    messages = [m.dict() for m in session.messages]
+    client = get_client()
+    try:
+        resp = await client.chat(messages)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    assistant_text = ""
+    if isinstance(resp, dict):
+        choices = resp.get("choices") or []
+        if choices:
+            first = choices[0]
+            if isinstance(first, dict) and "message" in first and isinstance(first["message"], dict):
+                assistant_text = first["message"].get("content", "")
+            else:
+                assistant_text = first.get("text", "")
+
+    if not assistant_text and isinstance(resp, dict):
+        assistant_text = resp.get("text", "") or resp.get("response", "")
+
+    if not assistant_text:
+        assistant_text = "(no text returned from model)"
+
+    # append assistant reply and increment counter
+    append_message(session_id, role="assistant", content=assistant_text)
+    session.metadata["questions_asked"] = q + 1
+
+    return {"reply": assistant_text, "raw": resp}
 
 @app.post("/session/{session_id}/settings")
 async def apply_session_settings(session_id: str, req: SettingsReq):
@@ -205,6 +253,12 @@ async def post_message(session_id: str, req: MessageReq):
     # append user message
     append_message(session_id, role="user", content=req.content)
 
+    # enforce question limit before generating a new assistant reply
+    q = session.metadata.get("questions_asked", 0)
+    max_q = session.metadata.get("max_questions", 10)
+    if q >= max_q:
+        raise HTTPException(status_code=400, detail="Question limit reached")
+
     # prepare messages for GreenPT: include system and history
     messages = [m.dict() for m in session.messages]
 
@@ -231,8 +285,9 @@ async def post_message(session_id: str, req: MessageReq):
     if not assistant_text:
         assistant_text = "(no text returned from model)"
 
-    # append assistant reply to session
+    # append assistant reply to session and increment question counter
     append_message(session_id, role="assistant", content=assistant_text)
+    session.metadata["questions_asked"] = q + 1
 
     return {"reply": assistant_text, "raw": resp}
 
