@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from .sessions import create_session, get_session, append_message
+from .sessions import create_session, get_session, append_message, set_assets
 from .greenpt import get_client
 
 
@@ -35,17 +35,53 @@ class CreateSessionReq(BaseModel):
     role: Optional[str] = None
     system_prompt: Optional[str] = None
     metadata: Optional[dict] = None
+    # optional textual assets to include in the system prompt
+    cv: Optional[str] = None
+    job_description: Optional[str] = None
+    company_info: Optional[str] = None
 
 
 class MessageReq(BaseModel):
     content: str
 
 
+class AssetsReq(BaseModel):
+    cv: Optional[str] = None
+    job_description: Optional[str] = None
+    company_info: Optional[str] = None
+
+
 @app.post("/session")
 async def create_session_endpoint(req: CreateSessionReq):
-    system_prompt = req.system_prompt or default_system_prompt(req.role)
-    session = create_session(system_prompt=system_prompt, metadata=req.metadata or {})
+    base = req.system_prompt or default_system_prompt(req.role)
+    # create the session with the base instructions; if assets were provided
+    # store them and rebuild the system prompt via sessions.set_assets
+    session = create_session(system_prompt=base, metadata=req.metadata or {})
+    if any([req.cv, req.job_description, req.company_info]):
+        set_assets(session.id, cv=req.cv, job_description=req.job_description, company_info=req.company_info, base_prompt=base)
     return {"id": session.id, "system_prompt": session.system_prompt}
+
+
+@app.post("/session/{session_id}/assets")
+async def set_session_assets(session_id: str, req: AssetsReq):
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="session not found")
+    # delegate assembly, base detection and storage to sessions.set_assets
+    updated = set_assets(session_id, cv=req.cv, job_description=req.job_description, company_info=req.company_info)
+    return {"id": updated.id, "system_prompt": updated.system_prompt}
+
+
+@app.get("/session/{session_id}/assets")
+async def get_session_assets(session_id: str):
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="session not found")
+    return {
+        "cv": session.cv,
+        "job_description": session.job_description,
+        "company_info": session.company_info,
+    }
 
 
 @app.get("/session/{session_id}")
