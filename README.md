@@ -34,3 +34,34 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Backend (Interview Practice)
+
+This small FastAPI backend is a hackathon skeleton for an LLM-powered interview practice tool.
+
+Environment
+- `GREENPT_API_KEY` — your GreenPT API key
+- `GREENPT_API_URL` — optional, override default GreenPT chat/completions endpoint
+- `CORS_ORIGIN` — optional, defaults to `*`
+
+Install
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Run (development)
+```bash
+export GREENPT_API_KEY="sk-..."
+uvicorn backend.src.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Endpoints
+- `POST /session` — create a new practice session. Body: `{ "role": "interviewer role" }`
+- `GET /session/{id}` — get session state
+- `POST /session/{id}/message` — send a message (user answer); returns model reply
+
+Notes
+- Sessions are stored in-memory for the prototype. Replace with a DB for persistence.
+- The GreenPT client is in `backend/src/greenpt.py`. It expects OpenAI-like response JSON with `choices`.
