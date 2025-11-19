@@ -9,6 +9,21 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
+# frontend build + deps
+frontend/.next/
+frontend/node_modules/
+frontend/.vercel/
+
+# backend python stuff (optional but useful)
+backend/.venv/
+backend/__pycache__/
+
+# OS / editor
+.DS_Store
+.env
+.vscode/
+
+
 
 # testing
 /coverage
