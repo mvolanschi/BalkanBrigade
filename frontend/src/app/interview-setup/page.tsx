@@ -175,6 +175,13 @@ export default function InterviewSetupPage() {
             "
           >
             {renderOptionGroup(
+              "Focus of questions",
+              "Should we lean more into technical depth or behavioral / soft skills?",
+              focusOptions,
+              focus,
+              setFocus
+            )}
+            {renderOptionGroup(
               "Interviewer behaviour",
               "Pick the style that best matches what you want to practice for.",
               interviewerBehaviorOptions,
@@ -188,14 +195,6 @@ export default function InterviewSetupPage() {
               difficultyOptions,
               difficulty,
               setDifficulty
-            )}
-
-            {renderOptionGroup(
-              "Focus of questions",
-              "Should we lean more into technical depth or behavioral / soft skills?",
-              focusOptions,
-              focus,
-              setFocus
             )}
 
             {error && (
