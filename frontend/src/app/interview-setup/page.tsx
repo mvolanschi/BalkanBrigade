@@ -56,21 +56,18 @@ export default function InterviewSetupPage() {
       setIsSubmitting(true);
 
       // Example backend call – adjust the endpoint to your backend implementation
-      const res = await fetch(
-        `${API_BASE}/session/${sessionId}/interview-config`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            technicality: focusOptions.indexOf(focus!) + 1,
-            politeness:
-              interviewerBehaviorOptions.indexOf(interviewerBehavior!) + 1,
-            difficulty: difficultyOptions.indexOf(difficulty!) + 1,
-          }),
-        }
-      );
+      const res = await fetch(`${API_BASE}/session/${sessionId}/settings`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          technicality: focusOptions.indexOf(focus!) + 1,
+          politeness:
+            interviewerBehaviorOptions.indexOf(interviewerBehavior!) + 1,
+          difficulty: difficultyOptions.indexOf(difficulty!) + 1,
+        }),
+      });
 
       if (!res.ok) {
         const detail = await res
