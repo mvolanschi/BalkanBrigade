@@ -8,6 +8,8 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from dotenv import load_dotenv
+
 from .sessions import create_session, get_session, append_message, set_assets, set_system_prompt
 from .greenpt import get_client
 from .prompt_store import get_prompt
@@ -16,6 +18,8 @@ from .prompt_store import get_prompt
 from pypdf import PdfReader
 import docx as docx_lib
 
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 app = FastAPI(title="Interview Practice Backend")
 

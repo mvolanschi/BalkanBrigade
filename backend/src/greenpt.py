@@ -30,7 +30,7 @@ class GreenPTClient:
             raise RuntimeError("GREENPT_API_KEY not configured")
 
         payload = {
-            "model": kwargs.get("model", "greenpt-large"),
+            "model": kwargs.get("model", "green-1-raw"),
             "messages": messages,
             "temperature": kwargs.get("temperature", 0.7),
             "max_tokens": kwargs.get("max_tokens", 512),
