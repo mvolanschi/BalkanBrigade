@@ -64,9 +64,10 @@ export default function InterviewSetupPage() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            question_focus: focus,
-            interviewer_behavior: interviewerBehavior,
-            difficulty,
+            question_focus: focusOptions.indexOf(focus!) + 1,
+            interviewer_behavior:
+              interviewerBehaviorOptions.indexOf(interviewerBehavior!) + 1,
+            difficulty: difficultyOptions.indexOf(difficulty!) + 1,
           }),
         }
       );

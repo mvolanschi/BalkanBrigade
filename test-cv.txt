@@ -1,0 +1,20 @@
+John Doe
+Software Engineer
+
+EXPERIENCE:
+- Senior Software Engineer at Tech Corp (2020-2024)
+  * Led development of microservices architecture
+  * Implemented CI/CD pipelines
+  * Mentored junior developers
+  
+- Software Engineer at StartupXYZ (2018-2020)
+  * Built RESTful APIs with Node.js and Python
+  * Developed frontend features with React
+  * Collaborated with product team on feature design
+
+SKILLS:
+Python, JavaScript, React, Node.js, Docker, AWS, PostgreSQL, MongoDB
+
+EDUCATION:
+Bachelor of Science in Computer Science
+University of Technology, 2018
