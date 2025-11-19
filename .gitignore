@@ -17,7 +17,7 @@ frontend/.vercel/
 # backend python stuff (optional but useful)
 backend/.venv/
 backend/__pycache__/
-
+backend/interview_helper/__pycache__
 # OS / editor
 .DS_Store
 .env
