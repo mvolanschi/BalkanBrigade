@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import io
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -179,6 +179,39 @@ async def evaluate_cv(
         logging.warning("Empty assistant text for CV evaluation; raw response: %s", resp)
         raise HTTPException(status_code=502, detail="GreenPT returned an empty evaluation.")
 
+    # Validate basic structure we expect: SCORE, STRENGTHS, IMPROVEMENTS, SUMMARY
+    def _looks_like_eval(text: str) -> bool:
+        t = (text or "").upper()
+        return all(k in t for k in ("SCORE:", "STRENGTHS:", "IMPROVEMENTS:", "SUMMARY:"))
+
+    if not _looks_like_eval(assistant_text):
+        logging.info("Evaluation missing expected sections; attempting one-pass reformat.")
+        # Ask the model to reformat the assistant output into the required sections.
+        try:
+            reform_prompt = (
+                "The assistant produced the following evaluation, but it may not follow the required format.\n"
+                "Please reformat the content exactly into the following sections (use the same content where possible):\n"
+                "SCORE: <number>\nSTRENGTHS:\n- ...\nIMPROVEMENTS:\n- ...\nSUMMARY:\n<one paragraph>\n\n"
+                "Here is the original evaluation:\n---\n" + assistant_text + "\n---\n"
+            )
+
+            resp2 = await client.chat(
+                [
+                    {"role": "system", "content": "You are a helpful formatter that converts text into a strict labeled evaluation format."},
+                    {"role": "user", "content": reform_prompt},
+                ],
+                temperature=0.0,
+                max_tokens=400,
+            )
+            reformatted = _extract_assistant_text(resp2)
+            if reformatted and _looks_like_eval(reformatted):
+                logging.info("Reformatted evaluation succeeded.")
+                return {"reply": reformatted.strip()}
+            else:
+                logging.warning("Reformat attempt failed; returning original evaluation. Raw reformat response: %s", resp2)
+        except Exception as exc:
+            logging.warning("Reformat attempt raised an exception: %s", exc)
+
     return {"reply": assistant_text.strip()}
 
 
@@ -335,42 +368,54 @@ async def apply_session_settings(session_id: str, req: SettingsReq):
 
 @app.post("/session/{session_id}/message")
 async def post_message(
-    session_id: str, 
-    audio: Optional[UploadFile] = File(...),
-    question_index: Optional[int] = Form(None)
+    session_id: str,
+    request: Request,
+    audio: Optional[UploadFile] = File(None),
+    question_index: Optional[int] = Form(None),
 ):
-    
-    print("in post message method")
+    """Accept either JSON with `{content: string}` or multipart `audio` upload.
+
+    - If `Content-Type` is `application/json`, read `content` from the body and use it
+      as the user's message (useful for summary prompts from the frontend).
+    - Otherwise, if an `audio` file is provided, run server-side transcription and
+      use the transcript as the user's message.
+    """
     session = get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="session not found")
-    
-    print(f"=== POST MESSAGE ENDPOINT CALLED ===")
-    print(f"session_id: {session_id}")
-    print(f"question_index: {question_index}")
-    print(f"audio received: {audio is not None}")
-    
-    if audio is None:
-        raise HTTPException(status_code=400, detail="No audio file provided")
+
+    # Determine whether this is a JSON request or a form/audio request
+    content_type = request.headers.get("content-type", "")
+    is_json = content_type.startswith("application/json")
 
     transcribed_text = ""
-    try:
-        # Read the audio file content
-        audio_content = await audio.read()
-        
-        print("after audio read")
 
-        # Import and call your speech-to-text function
-        from interview_helper.speech_to_text import speech_to_text2
-        
-        print("after import")
-        # Call the function (adjust parameters based on your actual function signature)
-        transcribed_text = speech_to_text2(audio_content)
-        print(f"transcribed text = {transcribed_text}")
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Speech-to-text failed: {str(e)}")
-    
+    if is_json:
+        # Read JSON body and extract `content`
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+        if not isinstance(body, dict) or "content" not in body:
+            raise HTTPException(status_code=422, detail="JSON body must contain 'content' field")
+
+        transcribed_text = str(body.get("content") or "").strip()
+        if not transcribed_text:
+            raise HTTPException(status_code=400, detail="Empty 'content' in JSON body")
+
+    else:
+        # Expect an audio file in multipart/form-data
+        if audio is None:
+            raise HTTPException(status_code=400, detail="No audio file provided")
+
+        try:
+            audio_content = await audio.read()
+            from interview_helper.speech_to_text import speech_to_text2
+            transcribed_text = speech_to_text2(audio_content)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Speech-to-text failed: {str(e)}")
+
     # append user message
     append_message(session_id, role="user", content=transcribed_text)
     
