@@ -8,8 +8,9 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Form  # UPDATED (a
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from .sessions import create_session, get_session, append_message, set_assets
+from .sessions import create_session, get_session, append_message, set_assets, set_system_prompt
 from .greenpt import get_client
+from .prompt_store import get_prompt
 
 # NEW: imports for CV text extraction
 from pypdf import PdfReader
@@ -46,19 +47,16 @@ def default_system_prompt(role: Optional[str] = None) -> str:
         return DEFAULT_PROMPT_TEMPLATE
 
 
-class CreateSessionReq(BaseModel):
-    role: Optional[str] = None
-    system_prompt: Optional[str] = None
-    metadata: Optional[dict] = None
-    # optional textual assets to include in the system prompt
-    cv: Optional[str] = None
-    job_description: Optional[str] = None
-    company_info: Optional[str] = None
 
 
 class MessageReq(BaseModel):
     content: str
 
+
+class SettingsReq(BaseModel):
+    technicality: int
+    politeness: int
+    difficulty: int
 
 # ---------- helpers for CV text extraction ----------
 
@@ -97,27 +95,6 @@ def extract_text_from_cv_file(filename: str, data: bytes) -> str:
             status_code=400,
             detail=f"Unsupported CV file type: {ext}. Please upload a PDF or DOCX.",
         )
-
-
-# ---------- endpoint to turn CV file into text (still available if needed) ----------
-
-@app.post("/cv-text")
-async def extract_cv_text(cv: UploadFile = File(...)):
-    """Accept a CV file and return extracted plain text.
-
-    Frontend will send FormData with field name 'cv'.
-    """
-    try:
-        data = await cv.read()
-        text = extract_text_from_cv_file(cv.filename, data)
-    except HTTPException:
-        # propagate our HTTPExceptions (unsupported type, etc.)
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to extract CV text: {e}")
-
-    return {"text": text}
-
 
 # ---------- NEW: combined endpoint: file + texts -> session ----------
 
@@ -164,36 +141,30 @@ async def create_session_from_upload(
     # 5) Return session info
     return {"id": session.id, "system_prompt": session.system_prompt}
 
-
-# ---------- EXISTING SESSION ENDPOINTS (unchanged) ----------
-
-@app.post("/session")
-async def create_session_endpoint(req: CreateSessionReq):
-    base = req.system_prompt or default_system_prompt(req.role)
-    # create the session with the base instructions; if assets were provided
-    # store them and rebuild the system prompt via sessions.set_assets
-    session = create_session(system_prompt=base, metadata=req.metadata or {})
-    if any([req.cv, req.job_description, req.company_info]):
-        set_assets(
-            session.id,
-            cv=req.cv,
-            job_description=req.job_description,
-            company_info=req.company_info,
-            base_prompt=base,
-        )
-    return {"id": session.id, "system_prompt": session.system_prompt}
-
-
-# Assets are accepted only at session creation. There is no separate
-# POST /session/{session_id}/assets endpoint to avoid redundancy.
-
-
 @app.get("/session/{session_id}")
 async def get_session_endpoint(session_id: str):
     session = get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="session not found")
     return session.dict()
+
+@app.post("/session/{session_id}/settings")
+async def apply_session_settings(session_id: str, req: SettingsReq):
+    """Apply system-prompt settings for a session using the prompts stored in system_prompts.json.
+
+    Expects JSON body with fields: technicality (1-3), politeness (1-3), difficulty (1-3).
+    """
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="session not found")
+
+    # get prompt from the prompts store
+    prompt = get_prompt(req.technicality, req.politeness, req.difficulty)
+    if not prompt:
+        raise HTTPException(status_code=400, detail="No prompt available for given settings")
+
+    updated = set_system_prompt(session_id, prompt)
+    return {"id": updated.id, "system_prompt": updated.system_prompt}
 
 
 @app.post("/session/{session_id}/message")

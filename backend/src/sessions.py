@@ -82,17 +82,36 @@ def set_assets(
         else:
             base = raw.strip()
 
-    # assemble the final prompt only if there are assets to include
-    parts = [base] if base else []
+    # small helper to avoid sending extremely long assets in full
+    def _truncate(text: str, max_chars: int = 4000) -> str:
+        if not text:
+            return ""
+        t = text.strip()
+        if len(t) <= max_chars:
+            return t
+        return t[: max_chars - 12].rstrip() + "\n\n[TRUNCATED]"
+
+    # instruction header: explicitly tell the model to prioritize the job description
+    instruction_header = (
+        "Important: When selecting, ordering, and framing interview questions, prioritize the Job Description as the primary source. "
+        "Use the Candidate CV to ground questions in the candidate's background and experience, and use Company Info to align tone and context. "
+        "Make sure questions are relevant to the job description and avoid asking unrelated details."
+    )
+
+    # assemble the final prompt: instruction header, base prompt, then assets sections
+    parts = [instruction_header]
+    if base:
+        parts.append(base)
+
     if session.cv:
-        parts.append("---\nCandidate CV:\n" + session.cv.strip())
+        parts.append("---\nCandidate CV:\n" + _truncate(session.cv))
     if session.job_description:
-        parts.append("---\nJob Description:\n" + session.job_description.strip())
+        parts.append("---\nJob Description:\n" + _truncate(session.job_description))
     if session.company_info:
-        parts.append("---\nCompany Info:\n" + session.company_info.strip())
+        parts.append("---\nCompany Info:\n" + _truncate(session.company_info))
 
     # join with spacing between sections
-    final_prompt = "\n\n".join(parts) if parts else base
+    final_prompt = "\n\n".join(parts)
     if final_prompt:
         session.system_prompt = final_prompt
         # update the first system message so chat history is consistent
@@ -104,3 +123,16 @@ def set_assets(
 
 def list_sessions() -> List[Session]:
     return list(_SESSIONS.values())
+
+
+def set_system_prompt(session_id: str, system_prompt: str) -> Session:
+    """Set the session system prompt and update the first system message.
+
+    Use this when you want to directly apply a prepared system prompt to an
+    existing session (for example, one selected from a prompts store).
+    """
+    session = _SESSIONS[session_id]
+    session.system_prompt = system_prompt
+    if session.messages:
+        session.messages[0] = Message(role="system", content=session.system_prompt)
+    return session
