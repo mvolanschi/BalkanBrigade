@@ -37,6 +37,7 @@ export default function InterviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [isFinished, setIsFinished] = useState(false);
   const [responseAIinterview, setResponseAIinterview] = useState("");
+  const [audioBlobResponse, setAudioBlobResponse] = useState(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -222,6 +223,46 @@ export default function InterviewPage() {
     mediaRecorderRef.current.start();
   };
 
+  // Helper function (add this outside the component or in a utils file)
+  function base64ToBlob(base64: string, mimeType: string): Blob {
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: mimeType });
+  }
+
+  useEffect(() => {
+    console.log("Audio blob response: " + JSON.stringify(audioBlobResponse))
+    if (audioBlobResponse) {
+      // Convert base64 to blob
+      const audioBlob = base64ToBlob(audioBlobResponse, 'audio/mpeg');
+      const audioUrl = URL.createObjectURL(audioBlob);
+      
+      // Create and play audio
+      const audio = new Audio(audioUrl);
+      audio.play().catch(err => {
+        console.error("Failed to play audio:", err);
+      });
+      
+      // Clean up when audio finishes or component unmounts
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+      };
+      
+      // Cleanup function for component unmount
+      return () => {
+        audio.pause();
+        URL.revokeObjectURL(audioUrl);
+      };
+    }
+
+  }, [audioBlobResponse])
+
   const uploadAnswer = async (audioBlob: Blob | null) => {
     console.log("In upload answer");
 
@@ -268,6 +309,10 @@ export default function InterviewPage() {
       } else {
         const reply = await res.json()
         setResponseAIinterview(reply.reply)
+
+        console.log(`reply audio data: ${reply.audio_data}`)
+
+        setAudioBlobResponse(reply.audio_data)
         console.log(`Reply: ${reply.reply}`)
       }
 

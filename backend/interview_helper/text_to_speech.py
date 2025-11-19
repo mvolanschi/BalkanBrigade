@@ -197,7 +197,7 @@ def generate_sound_files(text: str):
     text_to_speech(
         text=text,
         voice_id="rachel",
-        output_file="recordings/output_rachel.mp3"
+        output_file="./recordings/output_rachel.mp3"
     )
      
     print("\n" + "="*60)

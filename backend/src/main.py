@@ -3,6 +3,7 @@ import asyncio
 import os
 from pathlib import Path
 import io
+import base64
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -409,9 +410,32 @@ async def post_message(
     # append assistant reply to session and increment question counter
     append_message(session_id, role="assistant", content=assistant_text)
     session.metadata["questions_asked"] = q + 1
+
+    from interview_helper.text_to_speech import generate_sound_files
+
+    generate_sound_files(assistant_text)
     
+    audio_file_path = "./recordings/output_rachel.mp3"
+    audio_file = Path(audio_file_path)  # Convert string to Path object
+
+    audio_base64 = None
+    try:
+        if audio_file.exists() and audio_file.is_file():
+            print(f"Reading audio file, size: {audio_file.stat().st_size} bytes")
+            with open(audio_file, "rb") as f:
+                audio_bytes = f.read()
+            audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+            print(f"Encoded audio to base64, length: {len(audio_base64)}")
+        else:
+            print(f"Audio file not found at: {audio_file}")
+    except Exception as e:
+        print(f"Error reading audio file: {e}")
+        audio_base64 = None
+
     return {
         "reply": assistant_text, 
+        "audio_data": audio_base64,  # Base64 encoded audio
+        "audio_format": "mp3",        # So client knows the format
         "raw": resp,
         "question_index": question_index,
         "transcribed_text": transcribed_text
