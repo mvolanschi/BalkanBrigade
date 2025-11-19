@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import ColorBends from "../../components/ColorBends";
 import { Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
 
@@ -35,6 +37,8 @@ export default function SummaryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [usingFallback, setUsingFallback] = useState(false);
+
+  const router = useRouter();
 
   useEffect(() => {
     const applySummary = (reply: string) => {
@@ -268,6 +272,21 @@ Do not ask any questions back, just provide this analysis.
                         </div>
                       </div>
                     )}
+                  </div>
+
+                  {/* Go to interview setup button */}
+                  <div className="w-full flex justify-center mt-6">
+                    <Button
+                      size="lg"
+                      onClick={() => router.push("/interview-setup")}
+                      className="
+      mt-2 bg-white text-black hover:bg-gray-200 font-semibold 
+      px-12 py-6 text-xl rounded-full shadow-2xl pointer-events-auto 
+      disabled:opacity-60 flex items-center gap-3
+    "
+                    >
+                      Configure Interview & Continue
+                    </Button>
                   </div>
                 </>
               );
