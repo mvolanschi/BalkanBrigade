@@ -358,11 +358,14 @@ async def post_message(
         # Read the audio file content
         audio_content = await audio.read()
         
+        print("after audio read")
+
         # Import and call your speech-to-text function
-        from interview_helper.speech_to_text import speech_to_text
+        from interview_helper.speech_to_text import speech_to_text2
         
+        print("after import")
         # Call the function (adjust parameters based on your actual function signature)
-        transcribed_text = speech_to_text(audio_content)
+        transcribed_text = speech_to_text2(audio_content)
         print(f"transcribed text = {transcribed_text}")
         
     except Exception as e:

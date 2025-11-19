@@ -10,7 +10,7 @@ const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
 
 // 3 questions for now
 const TOTAL_QUESTIONS = 3;
-const QUESTION_DURATION = 30; // seconds
+const QUESTION_DURATION = 5; // seconds
 
 type StartSessionResponse = {
   reply: string;
@@ -36,6 +36,7 @@ export default function InterviewPage() {
   const [isProcessingUpload, setIsProcessingUpload] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isFinished, setIsFinished] = useState(false);
+  const [responseAIinterview, setResponseAIinterview] = useState("");
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -169,15 +170,15 @@ export default function InterviewPage() {
 
   const autoAdvance = () => {
     const recorder = mediaRecorderRef.current;
-
+    
     if (!recorder) {
       console.warn("No recorder available");
       uploadAnswer(null);
       return;
     }
+
     if (recorder.state === "recording") {
       console.log("Auto-stopping recording due to timer");
-      setIsProcessingUpload(true);
       setIsRecording(false);
       recorder.stop();
       // The 'stop' event listener will handle uploadAnswer with the blob
@@ -186,6 +187,16 @@ export default function InterviewPage() {
       uploadAnswer(null);
     }
   };
+
+  // const autoAdvance = () => {
+  //   if (isRecording && mediaRecorderRef.current) {
+  //     // this will trigger uploadAnswer in recorder.onstop
+  //     setIsRecording(false);
+  //     mediaRecorderRef.current.stop();
+  //   } else {
+  //     uploadAnswer(null);
+  //   }
+  // };
 
   // ONE-SHOT: can only start recording once per question
   const handleToggleRecording = () => {
@@ -254,6 +265,10 @@ export default function InterviewPage() {
             ? detail.detail
             : "Failed to upload answer."
         );
+      } else {
+        const reply = await res.json()
+        setResponseAIinterview(reply.reply)
+        console.log(`Reply: ${reply.reply}`)
       }
 
       setQuestionIndex((prev) => prev + 1);
@@ -359,7 +374,7 @@ export default function InterviewPage() {
                   </div>
                 </div>
                 <p className="text-white/70 text-sm md:text-base text-center">
-                  You have 30 seconds to answer after you start recording.
+                  You have 5 seconds to answer after you start recording.
                 </p>
               </div>
 
@@ -403,7 +418,7 @@ export default function InterviewPage() {
                         {isRecording ? "Recording…" : "Start recording"}
                       </Button>
                       <p className="text-white/60 text-xs md:text-sm text-center max-w-sm">
-                        Press once to start. We&apos;ll record for 30 seconds
+                        Press once to start. We&apos;ll record for 5 seconds
                         and move on automatically when the timer hits zero.
                       </p>
                     </div>

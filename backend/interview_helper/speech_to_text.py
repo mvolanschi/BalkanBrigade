@@ -13,6 +13,9 @@ self_hosted_env = DeepgramClientEnvironment(
     agent="",
 )
 
+# Path to the audio file
+# AUDIO_FILE = "./harvard.wav"
+
 api_key = os.getenv("GREEN-PT-KEY") or os.getenv("DEEPGRAM_API_KEY")
 
 if not api_key:
@@ -53,5 +56,34 @@ def speech_to_text(audio_bytes: bytes) -> str:
         return transcript
 
     except Exception as e:
-        print(f"Exception in speech_to_text: {e}")
-        raise
+        print(f"Exception: {e}")
+
+# if __name__ == "__main__":
+# speech_to_text(AUDIO_FILE)
+
+def speech_to_text2(audio_data: bytes):
+    try:
+        # STEP 1: Create a Deepgram client using the API key
+        deepgram = DeepgramClient(
+            api_key=api_key,
+            environment=self_hosted_env
+        )
+        
+        # STEP 2: Call the transcribe_file method with the audio data directly
+        response = deepgram.listen.v1.media.transcribe_file(
+            request=audio_data,  # Pass bytes directly
+            model="green-s",
+            smart_format=True,
+        )
+        
+        # Extract transcript
+        transcript = response.results.channels[0].alternatives[0].transcript
+        print(f"\n✅ Transcript extracted successfully!")
+        print(f"{'='*60}")
+        print(transcript)
+        print(f"{'='*60}\n")
+        return transcript
+        
+    except Exception as e:
+        print(f"Exception: {e}")
+        raise  # Re-raise the exception so FastAPI can handle it
