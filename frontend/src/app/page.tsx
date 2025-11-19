@@ -2,6 +2,7 @@
 
 import ColorBends from "../components/ColorBends";
 import { Button } from "@/components/ui/button";
+import Link from "next/link";
 
 export default function HomePage() {
   return (
@@ -28,19 +29,20 @@ export default function HomePage() {
         className="absolute inset-0 w-full h-full flex flex-col items-center justify-center pointer-events-none"
         style={{ zIndex: 999 }}
       >
-        {/* Main heading (smaller + new text) */}
+        {/* Main heading */}
         <h1 className="text-white text-4xl md:text-5xl lg:text-6xl font-bold text-center mb-8 px-4 drop-shadow-2xl pointer-events-auto">
           AI-powered career prep
           <br />
           with an energy-aware edge.
         </h1>
 
-        {/* Get Started Button */}
+        {/* Get Started Button -> routes to /upload */}
         <Button
+          asChild
           size="lg"
           className="bg-white text-black hover:bg-gray-200 font-semibold px-8 py-6 text-lg rounded-full shadow-2xl pointer-events-auto"
         >
-          Get Started
+          <Link href="/upload">Get Started</Link>
         </Button>
       </div>
 
