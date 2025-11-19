@@ -12,9 +12,9 @@ const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
 const TOTAL_QUESTIONS = 3;
 const QUESTION_DURATION = 30; // seconds
 
-type InterviewQuestionResponse = {
-  question: string;
-  audio_url?: string | null;
+type StartSessionResponse = {
+  reply: string;
+  raw?: any;
 };
 
 // Fallback questions if backend / session is not available
@@ -108,9 +108,9 @@ export default function InterviewPage() {
       }
 
       try {
-        const res = await fetch(
-          `${API_BASE}/session/${sessionId}/interview/question?index=${questionIndex}`
-        );
+        const res = await fetch(`${API_BASE}/session/${sessionId}/start`, {
+          method: "POST",
+        });
 
         if (!res.ok) {
           const detail = await res
@@ -123,19 +123,8 @@ export default function InterviewPage() {
           );
           useMockQuestion();
         } else {
-          const data: InterviewQuestionResponse = await res.json();
-          setQuestion(data.question || `Question ${questionIndex}`);
-
-          if (data.audio_url) {
-            try {
-              questionAudioRef.current?.pause();
-              const audio = new Audio(data.audio_url);
-              questionAudioRef.current = audio;
-              audio.play().catch(() => {});
-            } catch (err) {
-              console.error("Error playing question audio", err);
-            }
-          }
+          const data: StartSessionResponse = await res.json();
+          setQuestion(data.reply || `Question ${questionIndex}`);
         }
       } catch (err: any) {
         console.error(err);
