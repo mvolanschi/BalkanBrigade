@@ -2,13 +2,18 @@ from typing import Optional
 import asyncio
 import os
 from pathlib import Path
+import io  # NEW
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File  # UPDATED
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .sessions import create_session, get_session, append_message, set_assets
 from .greenpt import get_client
+
+# NEW: imports for CV text extraction
+from pypdf import PdfReader
+import docx as docx_lib
 
 
 app = FastAPI(title="Interview Practice Backend")
@@ -50,9 +55,71 @@ class CreateSessionReq(BaseModel):
     job_description: Optional[str] = None
     company_info: Optional[str] = None
 
+
 class MessageReq(BaseModel):
     content: str
 
+
+# ---------- NEW: helpers for CV text extraction ----------
+
+def _get_ext(filename: str) -> str:
+    return os.path.splitext(filename.lower())[1]
+
+
+def extract_text_from_cv_file(filename: str, data: bytes) -> str:
+    """Very simple text extractor for CV files.
+
+    Supports: .pdf, .docx
+    """
+    ext = _get_ext(filename)
+
+    if ext == ".pdf":
+        reader = PdfReader(io.BytesIO(data))
+        parts = []
+        for page in reader.pages:
+            txt = page.extract_text() or ""
+            parts.append(txt)
+        text = "\n".join(parts).strip()
+        if not text:
+            raise HTTPException(status_code=400, detail="Could not extract text from PDF CV.")
+        return text
+
+    elif ext == ".docx":
+        doc = docx_lib.Document(io.BytesIO(data))
+        parts = [para.text for para in doc.paragraphs if para.text]
+        text = "\n".join(parts).strip()
+        if not text:
+            raise HTTPException(status_code=400, detail="Could not extract text from DOCX CV.")
+        return text
+
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported CV file type: {ext}. Please upload a PDF or DOCX.",
+        )
+
+
+# ---------- NEW: endpoint to turn CV file into text ----------
+
+@app.post("/cv-text")
+async def extract_cv_text(cv: UploadFile = File(...)):
+    """Accept a CV file and return extracted plain text.
+
+    Frontend will send FormData with field name 'cv'.
+    """
+    try:
+        data = await cv.read()
+        text = extract_text_from_cv_file(cv.filename, data)
+    except HTTPException:
+        # propagate our HTTPExceptions (unsupported type, etc.)
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to extract CV text: {e}")
+
+    return {"text": text}
+
+
+# ---------- EXISTING SESSION ENDPOINTS (unchanged) ----------
 
 @app.post("/session")
 async def create_session_endpoint(req: CreateSessionReq):
@@ -61,7 +128,13 @@ async def create_session_endpoint(req: CreateSessionReq):
     # store them and rebuild the system prompt via sessions.set_assets
     session = create_session(system_prompt=base, metadata=req.metadata or {})
     if any([req.cv, req.job_description, req.company_info]):
-        set_assets(session.id, cv=req.cv, job_description=req.job_description, company_info=req.company_info, base_prompt=base)
+        set_assets(
+            session.id,
+            cv=req.cv,
+            job_description=req.job_description,
+            company_info=req.company_info,
+            base_prompt=base,
+        )
     return {"id": session.id, "system_prompt": session.system_prompt}
 
 
@@ -71,10 +144,10 @@ async def create_session_endpoint(req: CreateSessionReq):
 
 @app.get("/session/{session_id}")
 async def get_session_endpoint(session_id: str):
-    session = get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="session not found")
-    return session.dict()
+  session = get_session(session_id)
+  if not session:
+      raise HTTPException(status_code=404, detail="session not found")
+  return session.dict()
 
 
 @app.post("/session/{session_id}/message")
