@@ -162,12 +162,12 @@ Do not ask any questions back, just provide this analysis.
 
       {/* Content */}
       <div
-        className="absolute inset-0 flex flex-col items-center justify-center px-4 pointer-events-none"
+        className="absolute inset-0 flex flex-col items-center px-4 py-8 pointer-events-none overflow-y-auto"
         style={{ zIndex: 999 }}
       >
-        <div className="max-w-5xl w-full flex flex-col items-center gap-8 -translate-y-6 pointer-events-auto">
+        <div className="max-w-7xl w-full flex flex-col items-center gap-6 pointer-events-auto">
           {/* Title */}
-          <h1 className="text-white text-4xl md:text-5xl font-bold text-center drop-shadow-2xl">
+          <h1 className="text-white text-3xl md:text-4xl font-bold text-center drop-shadow-2xl mt-4">
             Match summary & feedback
           </h1>
 
@@ -191,45 +191,87 @@ Do not ask any questions back, just provide this analysis.
           )}
 
           {/* Main content */}
-          {!isLoading && (
-            <>
-              {/* Score card */}
-              <div className="rounded-3xl bg-black/70 border border-green-400/60 shadow-[0_0_45px_rgba(0,255,140,0.4)] backdrop-blur-xl px-10 py-8 flex flex-col items-center gap-3">
-                <p className="text-white/80 text-sm uppercase tracking-[0.2em]">
-                  Overall match score
-                </p>
-                <div className="flex items-baseline gap-3">
-                  <span className="text-5xl md:text-6xl font-extrabold text-green-300 drop-shadow-[0_0_25px_rgba(0,255,140,0.8)]">
-                    {score !== null ? score : "N/A"}
-                  </span>
-                  {score !== null && (
-                    <span className="text-white/70 text-lg">/ 100</span>
-                  )}
-                </div>
-                <p className="text-white/70 text-sm md:text-base text-center max-w-md">
-                  Higher scores mean your current CV and experience align
-                  closely with this role and company.
-                </p>
-                {usingFallback && (
-                  <p className="text-white/60 text-xs mt-2">
-                    Currently showing example score while the live analysis is
-                    unavailable.
-                  </p>
-                )}
-              </div>
+          {!isLoading &&
+            (() => {
+              // Parse sections from analysis
+              const strengthsMatch = analysis.match(
+                /STRENGTHS:([\s\S]*?)(?=IMPROVEMENTS:|$)/i
+              );
+              const improvementsMatch = analysis.match(
+                /IMPROVEMENTS:([\s\S]*?)(?=SUMMARY:|$)/i
+              );
+              const summaryMatch = analysis.match(/SUMMARY:([\s\S]*?)$/i);
 
-              {/* Raw analysis / feedback */}
-              <div className="w-full rounded-3xl bg-black/70 border border-white/15 shadow-[0_0_40px_rgba(0,0,0,0.9)] backdrop-blur-xl px-8 py-6 max-h-[40vh] overflow-y-auto">
-                <p className="text-white/80 text-sm mb-3">
-                  Detailed feedback
-                  {usingFallback && " (example)"}
-                </p>
-                <div className="text-white/90 text-sm md:text-base whitespace-pre-wrap leading-relaxed">
-                  {analysis}
-                </div>
-              </div>
-            </>
-          )}
+              const strengths = strengthsMatch ? strengthsMatch[1].trim() : "";
+              const improvements = improvementsMatch
+                ? improvementsMatch[1].trim()
+                : "";
+              const summary = summaryMatch ? summaryMatch[1].trim() : "";
+
+              return (
+                <>
+                  {/* Score display (no box) */}
+                  <div className="flex flex-col items-center gap-1 mt-2 mb-4">
+                    <p className="text-white/60 text-xs uppercase tracking-[0.25em]">
+                      Overall match
+                    </p>
+                    <div className="flex items-baseline gap-3">
+                      <span className="text-6xl md:text-7xl font-extrabold text-green-300 drop-shadow-[0_0_25px_rgba(0,255,140,0.8)]">
+                        {score !== null ? score : "N/A"}
+                      </span>
+                      {score !== null && (
+                        <span className="text-white/80 text-2xl">/ 100</span>
+                      )}
+                    </div>
+                    {usingFallback && (
+                      <p className="text-white/60 text-xs mt-1">
+                        Currently showing example score while the live analysis
+                        is unavailable.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Three boxes in a row */}
+                  <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Strengths */}
+                    {strengths && (
+                      <div className="rounded-3xl bg-emerald-950/80 border border-emerald-400/70 shadow-[0_0_40px_rgba(34,197,94,0.5)] backdrop-blur-xl px-7 py-6 min-h-[500px] overflow-y-auto">
+                        <h3 className="text-green-300 text-base font-bold mb-4 uppercase tracking-wider">
+                          Strengths
+                        </h3>
+                        <div className="text-white/90 text-sm whitespace-pre-wrap leading-relaxed">
+                          {strengths}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Improvements */}
+                    {improvements && (
+                      <div className="rounded-3xl bg-amber-950/80 border border-amber-400/70 shadow-[0_0_40px_rgba(245,158,11,0.5)] backdrop-blur-xl px-7 py-6 min-h-[500px] overflow-y-auto">
+                        <h3 className="text-yellow-300 text-base font-bold mb-4 uppercase tracking-wider">
+                          Improvements
+                        </h3>
+                        <div className="text-white/90 text-sm whitespace-pre-wrap leading-relaxed">
+                          {improvements}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Summary */}
+                    {summary && (
+                      <div className="rounded-3xl bg-slate-950/80 border border-white/40 shadow-[0_0_45px_rgba(255,255,255,0.35)] backdrop-blur-xl px-7 py-6 min-h-[500px] overflow-y-auto">
+                        <h3 className="text-white/90 text-base font-bold mb-4 uppercase tracking-wider">
+                          Summary
+                        </h3>
+                        <div className="text-white/90 text-sm whitespace-pre-wrap leading-relaxed">
+                          {summary}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
         </div>
       </div>
 
