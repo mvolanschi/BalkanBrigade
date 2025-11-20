@@ -411,9 +411,18 @@ async def post_message(
 
         try:
             audio_content = await audio.read()
+            if not audio_content:
+                raise HTTPException(status_code=400, detail="Uploaded audio file is empty")
+
             from interview_helper.speech_to_text import speech_to_text2
+
             transcribed_text = speech_to_text2(audio_content)
+        except HTTPException:
+            raise
+        except (ValueError, RuntimeError) as e:
+            raise HTTPException(status_code=400, detail=f"Speech-to-text failed: {e}")
         except Exception as e:
+            logging.exception("Speech-to-text unexpected failure")
             raise HTTPException(status_code=500, detail=f"Speech-to-text failed: {str(e)}")
 
     # append user message

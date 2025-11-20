@@ -10,7 +10,7 @@ const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
 
 // 3 questions for now
 const TOTAL_QUESTIONS = 3;
-const QUESTION_DURATION = 5; // seconds
+const QUESTION_DURATION = 15; // seconds
 
 type StartSessionResponse = {
   reply: string;
@@ -27,6 +27,7 @@ const MOCK_QUESTIONS: string[] = [
 export default function InterviewPage() {
   const router = useRouter();
 
+
   const [question, setQuestion] = useState<string | null>(null);
   const [questionIndex, setQuestionIndex] = useState(1);
   const [timeLeft, setTimeLeft] = useState<number>(QUESTION_DURATION);
@@ -42,6 +43,8 @@ export default function InterviewPage() {
   const audioChunksRef = useRef<Blob[]>([]);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const questionAudioRef = useRef<HTMLAudioElement | null>(null);
+  const nextQuestionOverrideRef = useRef<string | null>(null);
+  const processingUploadRef = useRef(false);
 
   // Ask for microphone permission and set up MediaRecorder
   useEffect(() => {
@@ -58,7 +61,7 @@ export default function InterviewPage() {
         });
 
         recorder.addEventListener("stop", () => {
-          if (isProcessingUpload) return;
+          if (processingUploadRef.current) return;
 
           const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
           audioChunksRef.current = [];
@@ -88,6 +91,14 @@ export default function InterviewPage() {
       clearTimer();
       setTimeLeft(QUESTION_DURATION);
       setIsRecording(false);
+
+      const override = nextQuestionOverrideRef.current;
+      if (override) {
+        nextQuestionOverrideRef.current = null;
+        setQuestion(override);
+        setIsLoadingQuestion(false);
+        return;
+      }
 
       const sessionId =
         typeof window !== "undefined"
@@ -225,6 +236,11 @@ export default function InterviewPage() {
   const uploadAnswer = async (audioBlob: Blob | null) => {
     console.log("In upload answer");
 
+    if (processingUploadRef.current) {
+      console.warn("Upload already in progress; ignoring duplicate call");
+      return;
+    }
+
     const sessionId =
       typeof window !== "undefined"
         ? localStorage.getItem("greenpt_session_id")
@@ -233,21 +249,26 @@ export default function InterviewPage() {
     // If no session, just locally advance questions (still practice)
     if (!sessionId) {
       setQuestionIndex((prev) => prev + 1);
-      setIsProcessingUpload(false);
       return;
     }
 
     console.log("We have session id in upload answer");
 
+    let succeeded = false;
+
     try {
+      processingUploadRef.current = true;
+      setIsProcessingUpload(true);
       setIsUploadingAnswer(true);
       setError(null);
 
+      if (!audioBlob || audioBlob.size === 0) {
+        throw new Error("No audio captured for this answer. Please re-record.");
+      }
+
       const formData = new FormData();
       formData.append("question_index", String(questionIndex));
-      if (audioBlob) {
-        formData.append("audio", audioBlob, `answer-${questionIndex}.webm`);
-      }
+      formData.append("audio", audioBlob, `answer-${questionIndex}.webm`);
 
       console.log(`audio blob =  ${audioBlob}`);
 
@@ -266,18 +287,24 @@ export default function InterviewPage() {
             : "Failed to upload answer."
         );
       } else {
-        const reply = await res.json()
-        setResponseAIinterview(reply.reply)
-        console.log(`Reply: ${reply.reply}`)
+        const reply = await res.json();
+        const nextQuestion = reply.reply || `Question ${questionIndex + 1}`;
+        setResponseAIinterview(nextQuestion);
+        nextQuestionOverrideRef.current = nextQuestion;
+        succeeded = true;
       }
 
-      setQuestionIndex((prev) => prev + 1);
     } catch (err: any) {
       console.error(err);
       setError(err?.message ?? "Failed to upload answer.");
     } finally {
       setIsUploadingAnswer(false);
       setIsProcessingUpload(false);
+      processingUploadRef.current = false;
+    }
+
+    if (succeeded) {
+      setQuestionIndex((prev) => prev + 1);
     }
   };
 

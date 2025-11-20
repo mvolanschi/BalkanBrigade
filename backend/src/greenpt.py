@@ -16,7 +16,7 @@ class GreenPTClient:
     def __init__(self, api_key: str | None = None, api_url: str | None = None):
         self.api_key = api_key or os.getenv("GREENPT_API_KEY")
         self.api_url = api_url or os.getenv(
-            "GREENPT_API_URL", "https://api.greenpt.example/v1/chat/completions"
+            "GREENPT_API_URL", "https://api.greenpt.ai/v1/chat/completions"
         )
         self._client = httpx.AsyncClient(timeout=30.0)
 
