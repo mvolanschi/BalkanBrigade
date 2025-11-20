@@ -401,7 +401,7 @@ export default function InterviewPage() {
                   </div>
                 </div>
                 <p className="text-white/70 text-sm md:text-base text-center">
-                  You have 5 seconds to answer after you start recording.
+                  You have 15 seconds to answer after you start recording.
                 </p>
               </div>
 
@@ -445,7 +445,7 @@ export default function InterviewPage() {
                         {isRecording ? "Recording…" : "Start recording"}
                       </Button>
                       <p className="text-white/60 text-xs md:text-sm text-center max-w-sm">
-                        Press once to start. We&apos;ll record for 5 seconds
+                        Press once to start. We&apos;ll record for 15 seconds
                         and move on automatically when the timer hits zero.
                       </p>
                     </div>

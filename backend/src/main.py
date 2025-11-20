@@ -132,6 +132,27 @@ def _extract_assistant_text(resp: Any) -> str:
     return ""
 
 
+def _collect_qa_pairs(session) -> list[tuple[str, str]]:
+    """Return ordered (question, answer) pairs from the session history."""
+
+    pairs: list[tuple[str, str]] = []
+    pending_question: str | None = None
+
+    for msg in session.messages:
+        role = (msg.role or "").lower()
+        content = (msg.content or "").strip()
+        if not content:
+            continue
+
+        if role == "assistant":
+            pending_question = content
+        elif role == "user" and pending_question:
+            pairs.append((pending_question, content))
+            pending_question = None
+
+    return pairs
+
+
 async def evaluate_cv(
     cv_text: str,
     job_description: str,
@@ -470,6 +491,63 @@ async def post_message(
         "question_index": question_index,
         "transcribed_text": transcribed_text
     }
+
+
+@app.get("/session/{session_id}/summary")
+async def summarize_session_endpoint(session_id: str):
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="session not found")
+
+    qa_pairs = _collect_qa_pairs(session)
+    if not qa_pairs:
+        raise HTTPException(status_code=400, detail="No interview responses available to summarize.")
+
+    lines = []
+    for idx, (question, answer) in enumerate(qa_pairs, start=1):
+        lines.append(f"Question {idx}:\n{question}\nAnswer {idx}:\n{answer}\n")
+    qa_block = "\n".join(lines).strip()
+
+    system_prompt = (
+        "You are an expert interview coach. Read the complete interview transcript and provide an overall assessment. "
+        "Score the candidate from 0 to 100 and produce concise Strengths, Improvements, and Summary sections. "
+        "Base your assessment strictly on the questions asked and the candidate's answers."
+    )
+
+    job_description = (session.job_description or "").strip() or "(not provided)"
+    company_info = (session.company_info or "").strip() or "(not provided)"
+
+    user_payload = (
+        "You are summarizing an interview between an AI interviewer and the candidate. "
+        "Use the following context to ground your analysis.\n\n"
+        f"Job Description:\n{job_description}\n\n"
+        f"Company Info:\n{company_info}\n\n"
+        "Interview Transcript (question followed by answer):\n"
+        f"{qa_block}\n\n"
+        "Respond EXACTLY in this format:\n"
+        "SCORE: <number between 0 and 100>\n\n"
+        "STRENGTHS:\n- ...\n\nIMPROVEMENTS:\n- ...\n\nSUMMARY:\n- ...\n"
+    )
+
+    client = get_client()
+    try:
+        resp = await client.chat(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_payload},
+            ],
+            temperature=0.2,
+            max_tokens=700,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to generate summary: {exc}")
+
+    assistant_text = _extract_assistant_text(resp)
+    if not assistant_text:
+        logging.warning("Empty assistant text for session summary; raw response: %s", resp)
+        raise HTTPException(status_code=502, detail="GreenPT returned an empty summary.")
+
+    return {"reply": assistant_text.strip(), "pairs_summarized": len(qa_pairs)}
 
 if __name__ == "__main__":
     import uvicorn

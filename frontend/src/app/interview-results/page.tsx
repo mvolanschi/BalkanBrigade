@@ -6,72 +6,36 @@ import { Loader2 } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
 
-type QuestionFeedback = {
-  question: string;
-  feedback: string;
-  suggested_answer?: string;
-};
-
-// Mock feedback if backend / session not available
-const MOCK_FEEDBACK: QuestionFeedback[] = [
-  {
-    question: "Tell me about yourself and why you’re interested in this role.",
-    feedback:
-      "You gave a solid overview, but you could tie your story more clearly to this specific role and company. Focus on 2–3 key themes in your background that line up with the job description, and end with why this opportunity excites you.",
-    suggested_answer:
-      "A stronger answer would briefly cover your current role, 1–2 relevant achievements, then connect those to the mission and responsibilities of this job, finishing with a clear statement of motivation.",
-  },
-  {
-    question:
-      "Describe a time you faced a major challenge at work. How did you handle it?",
-    feedback:
-      "Your example was relevant, but the structure could be sharper. Use a clear STAR format (Situation, Task, Action, Result) and spend most of the time on your actions and the measurable outcome.",
-    suggested_answer:
-      "Pick one concrete project, explain the challenge in 1–2 sentences, then describe 3–4 specific actions you took and finish with numbers (time saved, improvement %, impact on team or customer).",
-  },
-  {
-    question:
-      "What’s one sustainability initiative you’re proud of contributing to?",
-    feedback:
-      "You mentioned good intentions, but the impact could be more tangible. Interviewers are looking for concrete contributions, metrics, and your personal role rather than just team-level efforts.",
-    suggested_answer:
-      "Describe the initiative, your exact responsibilities, how you measured success and what changed as a result (e.g. reduction in waste/emissions, increased participation, process improvements).",
-  },
-];
-
 export default function InterviewResultsPage() {
-  const [items, setItems] = useState<QuestionFeedback[]>([]);
+  const [summary, setSummary] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [usingFallback, setUsingFallback] = useState(false);
+
+  // fallback demonstration content
+  const FALLBACK_SUMMARY = `
+Your interview summary is not available, so here is an example:
+
+SCORE: 72
+
+STRENGTHS:
+- You communicate clearly and stay on topic.
+- You provide relevant examples that match the questions.
+- Your motivation for the role comes across as genuine.
+
+IMPROVEMENTS:
+- Add more concrete metrics and outcomes to your stories.
+- Use a clearer structure (STAR) for behavioral questions.
+- Make the link between your experience and this specific role more explicit.
+
+SUMMARY:
+Overall, you have a strong foundation and good communication skills. With a bit more focus on structure, impact, and tailoring your answers to the job description, you can significantly improve your interview performance.
+  `.trim();
 
   useEffect(() => {
-    const applyFeedback = (parsed: QuestionFeedback[]) => {
-      if (!parsed || parsed.length === 0) {
-        setItems(MOCK_FEEDBACK);
-        setUsingFallback(true);
-      } else {
-        setItems(parsed);
-      }
-    };
-
-    const applyFallback = (reason?: string) => {
-      if (reason) {
-        setError(
-          `${reason} Showing example interview feedback so you can see how this page will look.`
-        );
-      } else {
-        setError("Using example interview feedback instead of live analysis.");
-      }
-      setUsingFallback(true);
-      setItems(MOCK_FEEDBACK);
-    };
-
-    const fetchFeedback = async () => {
+    const fetchSummary = async () => {
       try {
         setIsLoading(true);
         setError(null);
-        setUsingFallback(false);
 
         const sessionId =
           typeof window !== "undefined"
@@ -79,76 +43,45 @@ export default function InterviewResultsPage() {
             : null;
 
         if (!sessionId) {
-          applyFallback("No active session found.");
+          setError("No active session found.");
+          setSummary(FALLBACK_SUMMARY);
           return;
         }
 
-        const prompt = `
-Using the interview audio answers and questions already attached to this session, generate specific feedback for each question.
-
-Respond EXACTLY in this JSON format and nothing else:
-
-{
-  "items": [
-    {
-      "question": "Original question text here",
-      "feedback": "Concrete feedback on how the candidate could improve their answer.",
-      "suggested_answer": "An example of a stronger, more structured answer in 3–6 sentences."
-    }
-  ]
-}
-
-Do not include any additional commentary outside the JSON.
-`.trim();
-
-        const res = await fetch(`${API_BASE}/session/${sessionId}/message`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ content: prompt }),
-        });
+        // IMPORTANT: this is a GET and backend returns { reply, pairs_summarized }
+        const res = await fetch(`${API_BASE}/session/${sessionId}/summary`);
 
         if (!res.ok) {
           const detail = await res
             .json()
-            .catch(() => ({ detail: "Failed to get interview feedback." }));
+            .catch(() => ({ detail: "Failed to fetch interview summary." }));
           throw new Error(
             typeof detail.detail === "string"
               ? detail.detail
-              : "Failed to get interview feedback."
+              : "Failed to fetch interview summary."
           );
         }
 
-        const data: { reply: string } = await res.json();
-        const raw = (data.reply || "").trim();
+        const data: { reply?: string; pairs_summarized?: number } =
+          await res.json();
 
-        if (!raw) {
-          applyFallback("Got an empty response from the backend.");
+        if (!data.reply || typeof data.reply !== "string") {
+          setError("Invalid summary format from backend.");
+          setSummary(FALLBACK_SUMMARY);
           return;
         }
 
-        // Try to parse JSON; if it fails, fall back to mock
-        try {
-          const parsed = JSON.parse(raw) as { items?: QuestionFeedback[] };
-          if (!parsed.items || !Array.isArray(parsed.items)) {
-            applyFallback("Unexpected feedback format from backend.");
-            return;
-          }
-          applyFeedback(parsed.items);
-        } catch (e) {
-          console.error("Failed to parse feedback JSON", e);
-          applyFallback("Could not parse interview feedback from backend.");
-        }
+        setSummary(data.reply.trim());
       } catch (err: any) {
         console.error(err);
-        applyFallback(err?.message ?? "Failed to load interview feedback.");
+        setError(err?.message || "Failed to load interview summary.");
+        setSummary(FALLBACK_SUMMARY);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchFeedback();
+    fetchSummary();
   }, []);
 
   return (
@@ -175,15 +108,14 @@ Do not include any additional commentary outside the JSON.
         className="absolute inset-0 flex flex-col items-center px-4 py-8 pointer-events-none overflow-y-auto"
         style={{ zIndex: 999 }}
       >
-        <div className="max-w-5xl w-full flex flex-col items-center gap-6 pointer-events-auto">
+        <div className="max-w-4xl w-full flex flex-col items-center gap-6 pointer-events-auto">
           {/* Title */}
           <h1 className="text-white text-3xl md:text-4xl font-bold text-center drop-shadow-2xl mt-4">
-            Interview feedback
+            Interview Summary
           </h1>
           <p className="text-white/75 text-sm md:text-base text-center max-w-2xl">
-            Here&apos;s how your answers performed, question by question. Use
-            the suggestions and example responses below to sharpen your story
-            for real interviews.
+            Here&apos;s your overall interview performance summary, including
+            score, strengths, and areas to improve.
           </p>
 
           {/* Loading */}
@@ -191,64 +123,28 @@ Do not include any additional commentary outside the JSON.
             <div className="flex flex-col items-center gap-3 mt-4">
               <Loader2 className="h-8 w-8 text-white animate-spin" />
               <p className="text-white/80 text-sm">
-                Analyzing your interview answers and generating feedback…
+                Fetching your interview summary…
               </p>
             </div>
           )}
 
-          {/* Error banner */}
+          {/* Error */}
           {!isLoading && error && (
             <p className="text-yellow-200 text-sm text-center max-w-xl">
               {error}
             </p>
           )}
 
-          {/* Feedback list */}
-          {!isLoading && items.length > 0 && (
-            <div className="w-full flex flex-col gap-5 mt-2 pb-10">
-              {items.map((item, idx) => (
-                <div
-                  key={`${idx}-${item.question.slice(0, 20)}`}
-                  className="w-full rounded-3xl bg-black/80 border border-green-400/35 shadow-[0_0_45px_rgba(0,255,140,0.35)] backdrop-blur-xl px-6 md:px-8 py-6 flex flex-col gap-4"
-                >
-                  <div className="flex flex-col gap-1">
-                    <p className="text-green-300 text-xs uppercase tracking-[0.25em]">
-                      Question {idx + 1}
-                    </p>
-                    <p className="text-white text-base md:text-lg leading-relaxed">
-                      {item.question}
-                    </p>
-                  </div>
-
-                  <div className="flex flex-col gap-1">
-                    <p className="text-white/80 text-xs uppercase tracking-[0.2em]">
-                      How you could improve
-                    </p>
-                    <p className="text-white/90 text-sm md:text-base leading-relaxed">
-                      {item.feedback}
-                    </p>
-                  </div>
-
-                  {item.suggested_answer && (
-                    <div className="flex flex-col gap-1">
-                      <p className="text-white/80 text-xs uppercase tracking-[0.2em]">
-                        Example stronger answer
-                      </p>
-                      <p className="text-white/85 text-sm md:text-base leading-relaxed whitespace-pre-wrap">
-                        {item.suggested_answer}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              ))}
+          {/* Centered Summary Box */}
+          {!isLoading && summary && (
+            <div className="w-full max-w-3xl mx-auto mt-4 mb-10 rounded-3xl bg-black/80 border border-green-400/45 shadow-[0_0_55px_rgba(0,255,140,0.45)] backdrop-blur-xl px-8 md:px-10 py-8">
+              <p className="text-white/80 text-xs uppercase tracking-[0.25em] mb-3">
+                Overall Summary
+              </p>
+              <p className="text-white/90 text-sm md:text-base leading-relaxed whitespace-pre-wrap">
+                {summary}
+              </p>
             </div>
-          )}
-
-          {usingFallback && !isLoading && (
-            <p className="text-white/60 text-xs text-center mb-6">
-              Currently showing example feedback while live interview analysis
-              is still being wired up.
-            </p>
           )}
         </div>
       </div>
