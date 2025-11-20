@@ -27,7 +27,6 @@ const MOCK_QUESTIONS: string[] = [
 export default function InterviewPage() {
   const router = useRouter();
 
-
   const [question, setQuestion] = useState<string | null>(null);
   const [questionIndex, setQuestionIndex] = useState(1);
   const [timeLeft, setTimeLeft] = useState<number>(QUESTION_DURATION);
@@ -45,6 +44,35 @@ export default function InterviewPage() {
   const questionAudioRef = useRef<HTMLAudioElement | null>(null);
   const nextQuestionOverrideRef = useRef<string | null>(null);
   const processingUploadRef = useRef(false);
+
+  // 🔊 NEW: speech synthesis refs
+  const speechSupportedRef = useRef(false);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  // Detect browser speech synthesis support
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if ("speechSynthesis" in window && "SpeechSynthesisUtterance" in window) {
+      speechSupportedRef.current = true;
+    }
+  }, []);
+
+  // Helper to speak the current question
+  const speakQuestion = (text: string) => {
+    if (typeof window === "undefined") return;
+    if (!speechSupportedRef.current || !text) return;
+
+    // stop any ongoing speech
+    window.speechSynthesis.cancel();
+
+    const utter = new window.SpeechSynthesisUtterance(text);
+    utter.lang = "en-US";
+    utter.rate = 1;
+    utter.pitch = 1;
+
+    utteranceRef.current = utter;
+    window.speechSynthesis.speak(utter);
+  };
 
   // Ask for microphone permission and set up MediaRecorder
   useEffect(() => {
@@ -157,6 +185,18 @@ export default function InterviewPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [questionIndex]);
 
+  // 🔊 Whenever a new question is ready, read it out loud once
+  useEffect(() => {
+    if (!question || isLoadingQuestion || isFinished) return;
+    speakQuestion(question);
+
+    return () => {
+      if (typeof window !== "undefined") {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, [question, isLoadingQuestion, isFinished]);
+
   // Timer logic
   const startTimer = () => {
     clearTimer();
@@ -181,7 +221,7 @@ export default function InterviewPage() {
 
   const autoAdvance = () => {
     const recorder = mediaRecorderRef.current;
-    
+
     if (!recorder) {
       console.warn("No recorder available");
       uploadAnswer(null);
@@ -198,16 +238,6 @@ export default function InterviewPage() {
       uploadAnswer(null);
     }
   };
-
-  // const autoAdvance = () => {
-  //   if (isRecording && mediaRecorderRef.current) {
-  //     // this will trigger uploadAnswer in recorder.onstop
-  //     setIsRecording(false);
-  //     mediaRecorderRef.current.stop();
-  //   } else {
-  //     uploadAnswer(null);
-  //   }
-  // };
 
   // ONE-SHOT: can only start recording once per question
   const handleToggleRecording = () => {
@@ -293,7 +323,6 @@ export default function InterviewPage() {
         nextQuestionOverrideRef.current = nextQuestion;
         succeeded = true;
       }
-
     } catch (err: any) {
       console.error(err);
       setError(err?.message ?? "Failed to upload answer.");
@@ -313,6 +342,9 @@ export default function InterviewPage() {
       clearTimer();
       questionAudioRef.current?.pause();
       mediaRecorderRef.current?.stream.getTracks().forEach((t) => t.stop());
+      if (typeof window !== "undefined") {
+        window.speechSynthesis.cancel();
+      }
     };
   }, []);
 

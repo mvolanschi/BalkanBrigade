@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ColorBends from "../../components/ColorBends";
 import { Loader2 } from "lucide-react";
 
@@ -10,6 +10,9 @@ export default function InterviewResultsPage() {
   const [summary, setSummary] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // 👇 NEW: guard so we only fetch once even if React runs effects twice in dev
+  const hasFetchedSummaryRef = useRef(false);
 
   // fallback demonstration content
   const FALLBACK_SUMMARY = `
@@ -32,6 +35,10 @@ Overall, you have a strong foundation and good communication skills. With a bit 
   `.trim();
 
   useEffect(() => {
+    // 🔒 Prevent double fetch in React Strict Mode (dev)
+    if (hasFetchedSummaryRef.current) return;
+    hasFetchedSummaryRef.current = true;
+
     const fetchSummary = async () => {
       try {
         setIsLoading(true);
@@ -82,7 +89,7 @@ Overall, you have a strong foundation and good communication skills. With a bit 
     };
 
     fetchSummary();
-  }, []);
+  }, [FALLBACK_SUMMARY]);
 
   return (
     <div className="relative w-full h-screen overflow-hidden bg-black">
