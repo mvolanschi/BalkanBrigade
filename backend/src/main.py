@@ -383,7 +383,8 @@ async def apply_session_settings(session_id: str, req: SettingsReq):
     if not prompt:
         raise HTTPException(status_code=400, detail="No prompt available for given settings")
 
-    updated = set_system_prompt(session_id, prompt)
+    # Re-embed assets with the new base prompt so job description instructions remain intact
+    updated = set_assets(session_id, base_prompt=prompt)
     return {"id": updated.id, "system_prompt": updated.system_prompt}
 
 
