@@ -86,6 +86,8 @@ export default function SummaryPage() {
           return;
         }
 
+        console.log(`session id: ${sessionId}`)
+
         const prompt = `
 Using the candidate CV, job description and company info already attached to this session, do a focused analysis.
 
