@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import ColorBends from "../../components/ColorBends";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -40,7 +40,14 @@ export default function SummaryPage() {
 
   const router = useRouter();
 
+  // 🔒 guard to avoid double fetch in React StrictMode
+  const hasFetchedRef = useRef(false);
+
   useEffect(() => {
+    // prevent running twice in dev StrictMode
+    if (hasFetchedRef.current) return;
+    hasFetchedRef.current = true;
+
     const applySummary = (reply: string) => {
       setAnalysis(reply);
 
@@ -86,7 +93,7 @@ export default function SummaryPage() {
           return;
         }
 
-        console.log(`session id: ${sessionId}`)
+        console.log(`session id: ${sessionId}`);
 
         const prompt = `
 Using the candidate CV, job description and company info already attached to this session, do a focused analysis.
