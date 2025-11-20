@@ -10,7 +10,7 @@ const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
 
 // 3 questions for now
 const TOTAL_QUESTIONS = 3;
-const QUESTION_DURATION = 5; // seconds
+const QUESTION_DURATION = 10; // seconds
 
 type StartSessionResponse = {
   reply: string;
@@ -42,6 +42,7 @@ export default function InterviewPage() {
   const audioChunksRef = useRef<Blob[]>([]);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const questionAudioRef = useRef<HTMLAudioElement | null>(null);
+  const hasUploadedForCurrentQuestionRef = useRef(false); // NEW
 
   // Ask for microphone permission and set up MediaRecorder
   useEffect(() => {
@@ -80,6 +81,9 @@ export default function InterviewPage() {
       clearTimer();
       return;
     }
+
+    // reset per-question upload guard
+    hasUploadedForCurrentQuestionRef.current = false;
 
     const fetchQuestion = async () => {
       setIsLoadingQuestion(true);
@@ -170,7 +174,7 @@ export default function InterviewPage() {
 
   const autoAdvance = () => {
     const recorder = mediaRecorderRef.current;
-    
+
     if (!recorder) {
       console.warn("No recorder available");
       uploadAnswer(null);
@@ -187,16 +191,6 @@ export default function InterviewPage() {
       uploadAnswer(null);
     }
   };
-
-  // const autoAdvance = () => {
-  //   if (isRecording && mediaRecorderRef.current) {
-  //     // this will trigger uploadAnswer in recorder.onstop
-  //     setIsRecording(false);
-  //     mediaRecorderRef.current.stop();
-  //   } else {
-  //     uploadAnswer(null);
-  //   }
-  // };
 
   // ONE-SHOT: can only start recording once per question
   const handleToggleRecording = () => {
@@ -223,6 +217,13 @@ export default function InterviewPage() {
   };
 
   const uploadAnswer = async (audioBlob: Blob | null) => {
+    // prevent double upload / double increment per question
+    if (hasUploadedForCurrentQuestionRef.current) {
+      console.log("Upload already triggered for this question, ignoring");
+      return;
+    }
+    hasUploadedForCurrentQuestionRef.current = true;
+
     console.log("In upload answer");
 
     const sessionId =
@@ -266,9 +267,9 @@ export default function InterviewPage() {
             : "Failed to upload answer."
         );
       } else {
-        const reply = await res.json()
-        setResponseAIinterview(reply.reply)
-        console.log(`Reply: ${reply.reply}`)
+        const reply = await res.json();
+        setResponseAIinterview(reply.reply);
+        console.log(`Reply: ${reply.reply}`);
       }
 
       setQuestionIndex((prev) => prev + 1);
@@ -418,8 +419,8 @@ export default function InterviewPage() {
                         {isRecording ? "Recording…" : "Start recording"}
                       </Button>
                       <p className="text-white/60 text-xs md:text-sm text-center max-w-sm">
-                        Press once to start. We&apos;ll record for 5 seconds
-                        and move on automatically when the timer hits zero.
+                        Press once to start. We&apos;ll record for 5 seconds and
+                        move on automatically when the timer hits zero.
                       </p>
                     </div>
 
